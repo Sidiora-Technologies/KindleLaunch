@@ -34,6 +34,40 @@ is_money() {
 	return 1
 }
 
+# filter_generated <profile> <module-dir>
+# Echoes the path to a copy of <profile> with all lines for generated files
+# (those whose source carries the canonical "// Code generated ... DO NOT EDIT."
+# marker, e.g. abigen bindings, sqlc output) removed, so machine-written code is
+# never counted toward the coverage gate. If nothing is filtered, the original
+# profile path is echoed unchanged. Caller removes the temp file when it differs.
+filter_generated() {
+	local prof="$1" mod="$2"
+	[ -f "$mod/go.mod" ] || { echo "$prof"; return; }
+
+	local modpath
+	modpath="$(awk '/^module /{print $2; exit}' "$mod/go.mod")"
+
+	local patt
+	patt="$(mktemp)"
+	local f rel
+	while IFS= read -r f; do
+		rel="${f#"$mod"/}"
+		printf '%s/%s:\n' "$modpath" "$rel"
+	done < <(grep -rlE '^// Code generated .* DO NOT EDIT\.$' "$mod" --include='*.go' 2>/dev/null || true) >"$patt"
+
+	if [ ! -s "$patt" ]; then
+		rm -f "$patt"
+		echo "$prof"
+		return
+	fi
+
+	local out
+	out="$(mktemp)"
+	grep -vF -f "$patt" "$prof" >"$out" || true
+	rm -f "$patt"
+	echo "$out"
+}
+
 printf '%-26s %8s %8s   %s\n' "MODULE" "COVER" "MIN" "STATUS"
 printf '%-26s %8s %8s   %s\n' "------" "-----" "---" "------"
 
@@ -48,7 +82,11 @@ for prof in "${profiles[@]}"; do
 		continue
 	fi
 
-	pct="$(go tool cover -func="$prof" | awk '/^total:/ {gsub(/%/,"",$3); print $3}')"
+	# Drop generated files (abigen/sqlc) before measuring — only hand-written
+	# code counts toward the gate.
+	fprof="$(filter_generated "$prof" "$mod")"
+	pct="$(go tool cover -func="$fprof" | awk '/^total:/ {gsub(/%/,"",$3); print $3}')"
+	[ "$fprof" != "$prof" ] && rm -f "$fprof"
 	if [ -z "$pct" ]; then
 		printf '%-26s %8s %8s   %s\n' "$mod" "n/a" "-" "SKIP (no statements)"
 		continue

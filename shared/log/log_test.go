@@ -10,13 +10,13 @@ import (
 func TestParseLevel(t *testing.T) {
 	t.Parallel()
 	cases := map[string]slog.Level{
-		"debug":   slog.LevelDebug,
-		"DEBUG":   slog.LevelDebug,
-		" info ":  slog.LevelInfo,
-		"warn":    slog.LevelWarn,
-		"error":   slog.LevelError,
-		"":        slog.LevelInfo,
-		"bogus":   slog.LevelInfo,
+		"debug":  slog.LevelDebug,
+		"DEBUG":  slog.LevelDebug,
+		" info ": slog.LevelInfo,
+		"warn":   slog.LevelWarn,
+		"error":  slog.LevelError,
+		"":       slog.LevelInfo,
+		"bogus":  slog.LevelInfo,
 	}
 	for in, want := range cases {
 		if got := ParseLevel(in); got != want {

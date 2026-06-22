@@ -28,8 +28,8 @@ func TestVerifyWalletSignatureCaseInsensitiveAddress(t *testing.T) {
 func TestVerifyWalletSignatureRejects(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name              string
-		addr, msg, sig    string
+		name           string
+		addr, msg, sig string
 	}{
 		{"wrong address", "0x0000000000000000000000000000000000000001", goldenMsg, goldenSig},
 		{"tampered message", goldenAddr, goldenMsg + "x", goldenSig},

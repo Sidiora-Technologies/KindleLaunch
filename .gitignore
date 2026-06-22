@@ -6,6 +6,7 @@
 bin/
 dist/
 client/
+knowledge/andrew_commandbook.md
 
 # Local env (never commit secrets — SECTION 17 security)
 *.env

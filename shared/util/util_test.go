@@ -15,8 +15,8 @@ func TestHashToInt64Parity(t *testing.T) {
 		{"indexer:swap", 2760782684373639982},
 		{"0x322170E27d0c5Bd252337791fadED31dc4E85cA6", 5464066984825564289},
 		{"pool:0xabc", 3059060046206012},
-		{"héllo", 103094734},  // single UTF-16 code unit for é
-		{"🚀", 1773027},        // surrogate pair: two UTF-16 code units
+		{"héllo", 103094734}, // single UTF-16 code unit for é
+		{"🚀", 1773027},       // surrogate pair: two UTF-16 code units
 	}
 	for _, c := range cases {
 		if got := HashToInt64(c.in); got != c.want {

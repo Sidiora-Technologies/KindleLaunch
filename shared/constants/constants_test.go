@@ -5,15 +5,15 @@ import "testing"
 func TestChannelValues(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
-		"SWAP":                  ChannelSwap,
-		"MARKET_CREATED":        ChannelMarketCreated,
-		"POOL_STATE_UPDATED":    ChannelPoolStateUpdated,
-		"FEE_RECORDED":          ChannelFeeRecorded,
-		"FEE_DISTRIBUTED":       ChannelFeeDistributed,
-		"FEE_STRATEGY_CHANGED":  ChannelFeeStrategyChanged,
-		"OPTICAL_EXECUTED":      ChannelOpticalExecuted,
-		"CONFIG_UPDATED":        ChannelConfigUpdated,
-		"CANDLE_UPDATE":         ChannelCandleUpdate,
+		"SWAP":                 ChannelSwap,
+		"MARKET_CREATED":       ChannelMarketCreated,
+		"POOL_STATE_UPDATED":   ChannelPoolStateUpdated,
+		"FEE_RECORDED":         ChannelFeeRecorded,
+		"FEE_DISTRIBUTED":      ChannelFeeDistributed,
+		"FEE_STRATEGY_CHANGED": ChannelFeeStrategyChanged,
+		"OPTICAL_EXECUTED":     ChannelOpticalExecuted,
+		"CONFIG_UPDATED":       ChannelConfigUpdated,
+		"CANDLE_UPDATE":        ChannelCandleUpdate,
 	}
 	// Exact wire strings (invariant i5 — must match the TS CHANNELS constant).
 	exact := map[string]string{

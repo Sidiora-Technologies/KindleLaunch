@@ -24,16 +24,16 @@ type BaseEnv struct {
 	RPCURL         string `env:"RPC_URL,required"`
 	RPCURLFallback string `env:"RPC_URL_FALLBACK"`
 
-	EventEmitterAddress  string `env:"EVENT_EMITTER_ADDRESS,required"`
-	PoolRegistryAddress  string `env:"POOL_REGISTRY_ADDRESS,required"`
-	RouterAddress        string `env:"ROUTER_ADDRESS,required"`
-	FactoryAddress       string `env:"FACTORY_ADDRESS,required"`
-	QuoterAddress        string `env:"QUOTER_ADDRESS,required"`
-	ProtocolConfigAddr   string `env:"PROTOCOL_CONFIG_ADDRESS,required"`
-	FeeAccumulatorAddr   string `env:"FEE_ACCUMULATOR_ADDRESS,required"`
-	SidioraNFTAddress    string `env:"SIDIORA_NFT_ADDRESS,required"`
-	FeesRouterAddress    string `env:"FEES_ROUTER_ADDRESS,required"`
-	PoolBeaconAddress    string `env:"POOL_BEACON_ADDRESS,required"`
+	EventEmitterAddress string `env:"EVENT_EMITTER_ADDRESS,required"`
+	PoolRegistryAddress string `env:"POOL_REGISTRY_ADDRESS,required"`
+	RouterAddress       string `env:"ROUTER_ADDRESS,required"`
+	FactoryAddress      string `env:"FACTORY_ADDRESS,required"`
+	QuoterAddress       string `env:"QUOTER_ADDRESS,required"`
+	ProtocolConfigAddr  string `env:"PROTOCOL_CONFIG_ADDRESS,required"`
+	FeeAccumulatorAddr  string `env:"FEE_ACCUMULATOR_ADDRESS,required"`
+	SidioraNFTAddress   string `env:"SIDIORA_NFT_ADDRESS,required"`
+	FeesRouterAddress   string `env:"FEES_ROUTER_ADDRESS,required"`
+	PoolBeaconAddress   string `env:"POOL_BEACON_ADDRESS,required"`
 
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
 	NodeEnv  string `env:"NODE_ENV" envDefault:"production"`
