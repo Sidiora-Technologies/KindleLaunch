@@ -42,6 +42,30 @@ func TestServerDefaults(t *testing.T) {
 	}
 }
 
+func TestServerWithQueuesAndConcurrency(t *testing.T) {
+	t.Parallel()
+	srv, err := NewServer("redis://localhost:6379/0", ServerOptions{
+		Concurrency: 3,
+		Queues:      map[string]int{"holder-enrichment": 6, "ranking-compute": 3},
+	})
+	if err != nil || srv == nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+}
+
+func TestConstructorsBadURL(t *testing.T) {
+	t.Parallel()
+	if _, err := NewClient("http://bad"); err == nil {
+		t.Error("NewClient bad url should error")
+	}
+	if _, err := NewInspector("http://bad"); err == nil {
+		t.Error("NewInspector bad url should error")
+	}
+	if _, err := NewServer("http://bad", ServerOptions{}); err == nil {
+		t.Error("NewServer bad url should error")
+	}
+}
+
 func TestEnqueueIntegration(t *testing.T) {
 	ctx := context.Background()
 	ctr, err := tcredis.Run(ctx, "redis:7-alpine")

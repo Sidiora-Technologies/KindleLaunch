@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -27,6 +28,91 @@ func TestNewClientBadURL(t *testing.T) {
 	t.Parallel()
 	if _, err := NewClient("not a url"); err == nil {
 		t.Fatal("want error for bad redis url")
+	}
+}
+
+func TestPubSubConstructorsBadURL(t *testing.T) {
+	t.Parallel()
+	if _, err := NewPublisher("not a url"); err == nil {
+		t.Error("NewPublisher bad url should error")
+	}
+	if _, err := NewSubscriber("not a url"); err == nil {
+		t.Error("NewSubscriber bad url should error")
+	}
+}
+
+func TestCacheErrorPaths(t *testing.T) {
+	ctx := context.Background()
+	url := newRedisURL(t)
+	rdb, err := NewClient(url)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer rdb.Close()
+
+	// Decode error: store invalid JSON, then typed CacheGet must error.
+	if err := rdb.Set(ctx, "bad", "not-json", 0).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CacheGet[map[string]int](ctx, rdb, "bad"); err == nil {
+		t.Error("CacheGet on invalid JSON should error")
+	}
+
+	// Encode error: a channel cannot be JSON-marshalled.
+	type unencodable struct {
+		C chan int `json:"c"`
+	}
+	if err := CacheSet(ctx, rdb, "enc", unencodable{C: make(chan int)}, 0); err == nil {
+		t.Error("CacheSet of unmarshalable value should error")
+	}
+
+	// GetOrSet propagates a fetch error.
+	if _, err := CacheGetOrSet(ctx, rdb, "miss", func() (int, error) {
+		return 0, errors.New("fetch failed")
+	}, time.Minute); err == nil {
+		t.Error("CacheGetOrSet should propagate fetch error")
+	}
+}
+
+func TestSubscribeHandlerError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	url := newRedisURL(t)
+
+	sub, err := NewSubscriber(url)
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+	defer sub.Close()
+
+	errc, err := sub.Subscribe(ctx, "indexer:swap", func(context.Context, []byte) error {
+		return errors.New("handler boom")
+	})
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	pub, err := NewPublisher(url)
+	if err != nil {
+		t.Fatalf("NewPublisher: %v", err)
+	}
+	defer pub.Close()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		if err := pub.Publish(ctx, "indexer:swap", map[string]int{"x": 1}); err != nil {
+			t.Fatalf("Publish: %v", err)
+		}
+		select {
+		case herr := <-errc:
+			if herr == nil {
+				t.Fatal("expected handler error on errc")
+			}
+			return
+		case <-time.After(150 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("handler error not surfaced in time")
+		}
 	}
 }
 
