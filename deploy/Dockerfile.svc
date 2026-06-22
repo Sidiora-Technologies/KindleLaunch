@@ -1,0 +1,33 @@
+# Parameterized multi-stage build for any KindleLaunch Go leaf service.
+# Built from the repo root so the workspace replace targets (shared/, protocol/)
+# are in context.
+#
+#   docker build -f deploy/Dockerfile.svc \
+#     --build-arg SERVICE=core/indexer --build-arg BIN=indexerd \
+#     -t kindlelaunch-core-indexer:dev .
+
+ARG GO_VERSION=1.23
+
+FROM golang:${GO_VERSION}-bookworm AS build
+WORKDIR /src
+
+# SERVICE = module path under the repo root, e.g. "core/indexer".
+# BIN     = command name under that module's cmd/, e.g. "indexerd".
+ARG SERVICE
+ARG BIN
+
+# Copy the whole monorepo (leaf modules use local replace -> ../../shared etc.).
+COPY . .
+
+# Build the leaf module's daemon. CGO is off by default; services needing libvips
+# (media/metadata image processing) override this with their own build args.
+ENV CGO_ENABLED=0
+RUN test -n "$SERVICE" && test -n "$BIN" \
+	&& cd "$SERVICE" \
+	&& go build -trimpath -ldflags="-s -w" -o /out/app "./cmd/${BIN}"
+
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+WORKDIR /app
+COPY --from=build /out/app /app/app
+USER nonroot:nonroot
+ENTRYPOINT ["/app/app"]

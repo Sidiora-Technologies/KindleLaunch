@@ -1,0 +1,574 @@
+# ============================================================================
+# kindlelaunch.frozen.kvx
+# Sidiora.fun — Backend Microservices Go Rewrite — Production-Grade Master Plan
+# ----------------------------------------------------------------------------
+# format       = "sectioned-kvx (dense key=value, double-quoted string values)"
+# version      = "0.3.0"
+# status       = "frozen-plan (stack decisions D1-D8 locked except D6; P0 scaffolding underway)"
+# scope        = "BACKEND Go rewrite. core/{indexer,trading-charts,stats-workers,pnl-tracker,"
+#                "ranking-algo,api} + media/{metadata,user,social,livestream,gateway} + shared/ + protocol/"
+# excludes     = "client/ (own frontend.frozen.kvx); meta-ag (not yet on new chain);"
+#                "market-maker (owner-operated add-on, handled separately)"
+# authored     = "2026-06-22"
+# revised      = "2026-06-22 (v0.2.0 — matched real skeleton; gateways; engineering standards)"
+# author       = "did:matrix:cursor-agent:d205e18de628e38d (pair-programmer)"
+# repo_new     = "/root/KindleLaunch (NEW production monorepo; Go backend target)"
+# repo_old     = "/sidiora (current TS monorepo; source of truth for behaviour parity)"
+# convention   = "Matrix-core: domain group dirs (core/, media/), each leaf an INDEPENDENT Go module"
+# north_star   = "Production-grade Go backend, parity with TS behaviour, engineered to carry"
+#                "500K+ users on DAY ONE on a real-time financial chain at ~133ms blocks"
+# ============================================================================
+
+[meta.house_rules]
+grounding      = "current.* lines were READ from /sidiora source, not assumed"
+file_anchors   = "every task cites the real source file(s) it ports from; paths absolute"
+parity_first   = "behaviour parity with the TS service is the bar; improvements are additive"
+no_money_float = "HARD: never use float for token/price/money math — math/big.Int or uint256 only"
+independence   = "each leaf module builds + runs standalone (own go.mod); shares via replace dirs"
+no_stub        = "tests exercise REAL code paths against REAL DB/Redis/chain fixtures, never fakes"
+tests_everywhere = "HARD: EVERY package ships unit tests; no symbol merges without covering tests"
+                 "(see SECTION 17 ENGINEERING STANDARDS — coverage gate, CI-enforced)"
+prod_day_one   = "HARD: every design choice assumes 500K+ concurrent users on day one —"
+                 "load-tested, backpressured, observable, gracefully degrading"
+schema_reuse   = "Go services reuse the EXISTING Postgres schemas/tables 1:1 to allow strangler"
+                 "cutover (Go service runs against the same DB as the TS one)"
+
+# ============================================================================
+# SECTION 0 — CURRENT STACK GROUND TRUTH (verified from /sidiora source)
+# ============================================================================
+[stack.current]
+language      = "TypeScript (ESM, NodeNext), Node 20+, pnpm@9.15 workspaces + Turbo"
+http          = "Fastify 5 (shared http/server.ts wrapper)"
+orm           = "Drizzle ORM over node-postgres (pg) Pool; per-service pgSchema namespaces"
+db            = "PostgreSQL 16 (single instance, many schemas: indexer/stats/metadata/pnl/...)"
+cache_bus     = "Redis 7 (ioredis) — pub/sub + cache + rate-limit token buckets"
+queues        = "BullMQ (Redis-backed) — REDIS_BULL_URL"
+chain         = "viem 2; Paxeer Network chain id 125; ~133ms block cadence (CometBFT EVM)"
+deploy        = "Docker multi-stage -> ghcr.io/dev-paxeer/sidiora-<svc>:latest; Railway; PM2"
+run_local     = "docker run --network host --env-file docker-envs/<svc>.env (run-services.sh)"
+shared_pkg    = "@sidiora/shared (packages/shared/src) + @sidiora/launchpad-v3-core (ABIs)"
+
+[stack.contracts]
+source        = "packages/launchpad_v3_core (@sidiora/launchpad-v3-core/server exports ABIs)"
+wired_in      = "/sidiora/packages/shared/src/chain/contracts.ts createContracts()"
+set           = "EventEmitter, PoolRegistry, SidioraFactory, Router, Quoter, ProtocolConfig,"
+                "FeeAccumulator, SidioraNFT, FeesRouter, PoolBeacon (10 contracts)"
+addr_eventemitter = "0x6679aF411d534de222C32ed0AF94C3BD67090672"
+addr_poolregistry = "0x1F22f11325197fae71937598F6935cc4e9231970"
+addr_router       = "0xCC7298801112682e10ee14b8a520309caD80336d"
+addr_factory      = "0x322170E27d0c5Bd252337791fadED31dc4E85cA6"
+addr_quoter       = "0xB768e183b6EfDeDf8b2AA7af732039D1C3c452d0"
+addr_protocolcfg  = "0x325e6Fb9c3505A35785365674089aEf8497C697B"
+addr_feeaccum     = "0x5C3A7A87eB2DfC965F2764E28524FE77c0003810"
+addr_sidioranft   = "0xb36ac5052b43Eef2807D4F91c494cD5D8EeD3fEa"
+addr_feesrouter   = "0x02Df12a44F2658080E76fbcF7D6B34Baa97843b6"
+addr_poolbeacon   = "0xe769859e5a9AEd339931E2717AF00606fA0e847f"
+rpc           = "https://mainnet-beta.rpc.hyperpaxeer.com/rpc (workspace_state.json)"
+
+[stack.event_bus]
+note          = "THREE transport mechanisms today; the Go rewrite must preserve all three at parity"
+webhooks      = "indexer fans out HMAC-SHA256-signed POST /webhooks/events to consumers"
+                "(candles, stats, meta-ag, pnl). Signing in shared webhook-auth.ts;"
+                "indexer publishers/event-publisher.ts; targets from WEBHOOK_URLS + HMAC secrets."
+redis_pubsub  = "shared/src/constants/channels.ts CHANNELS = indexer:swap, indexer:market_created,"
+                "indexer:pool_state_updated, indexer:fee_recorded, indexer:fee_distributed,"
+                "indexer:fee_strategy_changed, indexer:optical_executed, indexer:config_updated,"
+                "candles:update"
+bull_queues   = "shared/src/constants/queues.ts QUEUES = holder-enrichment, ranking-compute,"
+                "image-processing, indexer-backfill"
+
+[stack.ports]
+note          = "host-network ports from run-services.sh / ecosystem.config.cjs"
+candles       = "5050"
+stats         = "5051"
+pnl           = "5052"
+meta_ag       = "5053"
+ranking_algo  = "5054"
+market_maker  = "5055"
+users         = "5057"
+chat          = "5058"
+livestream    = "5059"
+metadata      = "5060"
+indexer       = "PORT env (own indexer/ecosystem.config.cjs; not in run-services.sh)"
+
+# ============================================================================
+# SECTION 1 — TARGET ARCHITECTURE (Go, production-grade)
+# ============================================================================
+[target.principles]
+modularity    = "domain-grouped independent Go modules: core/<svc> + media/<svc>, each own go.mod"
+data_plane    = "core/ + media/ LEAF services ORGANIZE + PROCESS data only; no broad public surface"
+edge_plane    = "gateways are the ONLY public ingress: core/api (data: WSS/SSE + rate-limited REST),"
+                "media/gateway (media serve + cache + chat/comment WSS tunnel + wizard upload)"
+layout        = "<module>/{cmd/<svcd>/main.go, internal/, pkg/types/, migrations/, <name>.frozen.kvx}"
+shared_via    = "go.mod replace -> ../../shared (runtime lib) + ../../protocol (chain). [D7]"
+parity        = "endpoints, event semantics, DB rows must match TS behaviour"
+strangler     = "deploy Go svc against the SAME Postgres + Redis as TS; cut over one at a time"
+
+[target.stack]
+go_version    = "1.25 (GOTOOLCHAIN=auto; bumped from 1.23 during P1 — pgx/v5 v5.10,"
+                "go-redis/v9 v9.20, asynq v0.26 require go>=1.25; recorded 2026-06-22)"
+http          = "DECISION D1 — default: chi v5 over net/http (stdlib-compatible, middleware-friendly,"
+                "pprof/otelhttp). Alt: fiber (fasthttp) for raw throughput. Recommend chi."
+db            = "pgx/v5 (pgxpool). D2: sqlc (type-safe codegen) recommended; alt plain pgx."
+                "Migrations via goose."
+redis         = "redis/go-redis v9 (pub/sub + cache + rate-limit)"
+queues        = "DECISION D3 — BullMQ is Node-specific. Default: hibiken/asynq (Redis-backed,"
+                "near-BullMQ semantics). Go producers+consumers move together per queue. Alt river."
+chain         = "ethereum/go-ethereum (ethclient) + abigen bindings from launchpad ABIs"
+realtime      = "WSS via coder/websocket; SSE via net/http flusher; both fed from Redis pub/sub;"
+                "bounded per-connection send buffers + backpressure (drop-oldest / evict slow clients)"
+config        = "caarlos0/env mirroring shared baseEnvSchema; same env var names"
+logging       = "log/slog (stdlib structured JSON) — replaces pino-style createLogger"
+validation    = "go-playground/validator for request bodies; typed money via math/big"
+money         = "holiman/uint256 for EVM 256-bit; math/big.Int for arbitrary; NEVER float64"
+images        = "h2non/bimg (libvips) or disintegration/imaging for avatars/logos/banners;"
+                "OG card render (pnl-tracker) via fogleman/gg + golang/freetype"
+storage       = "Cloudflare R2 (S3-compatible) via aws-sdk-go-v2 S3 client @ R2 endpoint [L9];"
+                "optional local volume hot-cache; presigned PUT/GET; served via media/gateway"
+virus_scan    = "clamd TCP client (mirrors shared http/virus-scan.ts scanBuffer)"
+observability = "slog + prometheus client + OpenTelemetry traces + net/http/pprof;"
+                "/health, /health/live, /health/ready, /metrics"
+testing       = "stdlib testing + testcontainers-go (real Postgres/Redis) + httptest; -race in CI"
+
+# ============================================================================
+# SECTION 2 — KINDLELAUNCH REPO LAYOUT (module map)
+# ============================================================================
+[layout.root]
+note          = "REAL skeleton verified 2026-06-22 (`tree /root/KindleLaunch`); core/ + media/"
+                "are domain GROUP dirs that hold leaf Go modules. Leaf dirs currently empty."
+module_root   = "github.com/Sidiora-Technologies/KindleLaunch (leaf = <root>/<group>/<svc>) [L8]"
+core          = "core/ — DATA plane: indexer + processors (trading-charts, stats-workers,"
+                "pnl-tracker, ranking-algo) + api (public data gateway)"
+media          = "media/ — MEDIA plane: metadata + user + social + livestream + gateway"
+protocol      = "protocol/ — contract ABIs + abigen Go bindings + chain types + address book. go.mod."
+shared        = "shared/ — PROPOSED runtime lib module (db/redis/queue/auth/http/config/log/util);"
+                "consumed by every leaf via replace. [D7 — confirm name/location]"
+knowledge     = "knowledge/ — this plan + per-domain docs"
+deploy        = "deploy/ — per-service Dockerfile + deploy.sh + compose; registry push [D6]"
+tools         = "tools/ — CLIs / migration runners / ops utilities"
+research      = "research/ — parity analyses, schema dumps, benchmark + load-test notes"
+licenses      = "licenses/ — SPDX license texts"
+client        = "client/ — Sidiora Next.js app (UNCHANGED here; own frozen spec)"
+
+[layout.modules]
+note          = "each leaf = own go.mod, replace ../../shared + ../../protocol, <name>.frozen.kvx"
+shared        = "shared/                (runtime: db, redis, queue, chain, auth, http, config, log, util)"
+protocol      = "protocol/              (abigen bindings, addresses, event ABIs, decoded types)"
+core_indexer  = "core/indexer/          (chain ingest, block processor, log sources, webhooks+pubsub)"
+core_charts   = "core/trading-charts/   (OHLCV builder, gap fill, TradingView UDF) [was candles]"
+core_stats    = "core/stats-workers/    (pool stats, holders, ratings; swap/market/state consumers) [was stats]"
+core_pnl      = "core/pnl-tracker/      (positions, PnL, referrals, OG cards, reconciler) [was pnl]"
+core_ranking  = "core/ranking-algo/     (trending/breakout/topvol/movers/unusual/new rankers)"
+core_api      = "core/api/              (PUBLIC GATEWAY: WSS/SSE + rate-limited REST; fans out to core)"
+media_metadata = "media/metadata/        (token metadata + image bucket storage)"
+media_user    = "media/user/            (profiles + avatars + watchlists; cross-schema indexer.pools) [was users]"
+media_social  = "media/social/          (pool chat + comments over WS; moderation) [was chat]"
+media_live    = "media/livestream/      (Livepeer integration + stream routes)"
+media_gateway = "media/gateway/         (PUBLIC media EDGE: serve+cache, chat/comment WSS tunnel,"
+                "token-wizard upload -> bucket + metadata) [PROPOSED — confirm name]"
+
+# ============================================================================
+# SECTION 3 — shared/ RUNTIME MODULE SPEC (ports @sidiora/shared)
+# ============================================================================
+[module.shared]
+maps_from     = "/sidiora/packages/shared/src (index.ts barrel + 13 subpackages)"
+location      = "PROPOSED top-level shared/ module (was mislabeled core/ in v0.1.0). [D7]"
+pkg.config    = "shared/config — env loader + BaseEnv (DATABASE_URL, REDIS_URL, REDIS_BULL_URL,"
+                "RPC_URL, RPC_URL_FALLBACK, EVENT_EMITTER_ADDRESS, CORS_ALLOWED_ORIGINS,"
+                "LOG_LEVEL, PORT) mirroring shared/config/env.ts baseEnvSchema"
+pkg.db        = "shared/db — pgxpool client + pool metrics; bigint helpers (bigintMax/Min/Add/Sub/"
+                "MulDiv via math/big), computeMarketCap, nowSeconds; cross-schema table refs"
+pkg.redis     = "shared/redis — client + pubsub (publisher/subscriber, ChannelName) + cache"
+                "(cacheGet/Set/Invalidate/GetOrSet)"
+pkg.queue     = "shared/queue — asynq client + worker wrappers (parse Bull/Redis conn) [D3]"
+pkg.chain     = "shared/chain — ethclient wrapper (primary + fallback RPC); contracts handle"
+                "(uses protocol/ bindings); paxeerNetwork chain config (id 125)"
+pkg.auth      = "shared/auth — verifyWalletSignature (EIP-191 personal_sign recover) + webhook HMAC"
+                "(HMAC-SHA256 sig + timestamp verify, replay window)"
+pkg.http      = "shared/http — server bootstrap, health (live/ready w/ dep checks), error handler,"
+                "rate-limit (Redis token bucket), api-key-auth (constant-time), virus-scan (clamd)"
+pkg.process   = "shared/process — graceful shutdown (signal handling, drain, timeout)"
+pkg.log       = "shared/log — slog JSON logger factory (name + level)"
+pkg.constants = "shared/constants — CHANNELS, QUEUES, TIMEFRAMES (+ keys) ported verbatim"
+pkg.secrets   = "shared/secrets — secrets manager (env / file / provider) mirror"
+pkg.util      = "shared/util — hashToInt64, formatPrice, formatVolume (decimal/bigint-exact)"
+hard          = "money/price helpers MUST be decimal/bigint-exact (no float); 100% unit-tested"
+
+# ============================================================================
+# SECTION 4 — protocol/ MODULE SPEC (contract bindings)
+# ============================================================================
+[module.protocol]
+maps_from     = "packages/launchpad_v3_core (ABIs) + shared/src/chain/contracts.ts wiring"
+bindings      = "abigen Go bindings for the 10 launchpad contracts (see stack.contracts.set)"
+events        = "decoded event structs + topic0 registry for all indexed events"
+addresses     = "typed address book loaded from env (mirrors workspace_state.json set)"
+meta_ag       = "DEFERRED — Meta-AG ABIs (TransactionTracker/PECOR/PECOROrders/MetaAgRouter/"
+                "PECORVault/PriceOracle/OracleHub) NOT generated yet; meta-ag is not on the new"
+                "chain. Re-add when it ships (see decisions D5)."
+gen           = "ABIs exported to JSON from launchpad_v3_core, then abigen --pkg bindings"
+
+# ============================================================================
+# SECTION 5 — indexer/ MODULE SPEC (chain ingest — the spine)
+# ============================================================================
+[module.indexer]
+maps_from     = "/sidiora/indexer/src (config.ts, index.ts, indexer/*, db/*, publishers/*)"
+purpose       = "read EVM logs at ~133ms cadence, decode launchpad events, write DB, fan out"
+                "(webhooks + redis pub/sub) to downstream consumers; backfill historical ranges"
+modes         = "live | backfill (config INDEXER_MODE); BACKFILL_ONLY exits after catch-up"
+log_sources   = "swappable (INDEXER_LOG_SOURCE): paxscan (Blockscout DB, backfill-pref),"
+                "rpc-getlogs (validator RPC pool, live-pref; health-rank, stale quarantine,"
+                "failover), rpc (single JSON-RPC legacy/dev). src/indexer/source-factory.ts"
+head_source   = "INDEXER_HEAD_SOURCE (defaults to log source); chain-head MAX(number) or RPC"
+dir           = "core/indexer/"
+processors    = "BlockProcessor (block-processor.ts ~16KB core decode+write); BackfillProcessor"
+                "(backfill.ts). MetaAgProcessor DEFERRED (meta-ag off the new chain)."
+reorg         = "src/indexer/reorg-handler.ts (currently minimal — HARDEN in Go w/ confirmations)"
+publisher     = "publishers/event-publisher.ts — HMAC-signed webhook fan-out + redis publish"
+db_schema     = "indexer/src/db/schema.ts (~9.7KB indexer schema). REUSE 1:1; goose migrations."
+                "(meta-ag-schema.ts deferred with meta-ag.)"
+http          = "server.ts read API (chain id, health). PORT env. NOTE: public reads go via core/api."
+go_target     = "core/indexer/internal/{source,decode,processor,publisher,store}; cmd/indexerd"
+risks         = "tip-lag race (paxscan logs lag ~50s -> dropped blocks); concurrency at 133ms;"
+                "at-least-once webhook delivery; reorg safety; cursor durability"
+
+# ============================================================================
+# SECTION 6 — core/trading-charts/ MODULE SPEC (was candles)
+# ============================================================================
+[module.core_charts]
+dir           = "core/trading-charts/"
+maps_from     = "/sidiora/@analytics_microservices/candles/src (index.ts, engine/*, routes/*, db/*)"
+purpose       = "build OHLCV candles from swap events; produce TradingView UDF data + candle stream"
+ingest        = "POST /webhooks/events (HMAC) — consumes swap events to fold candles"
+engine        = "engine/candle-builder.ts (fold swaps -> OHLCV per timeframe), engine/gap-detector.ts"
+                "(detectAndFillGaps every 60s + once on boot)"
+timeframes    = "shared/constants TIMEFRAMES (shared/src/constants/timeframes.ts)"
+udf           = "TradingView UDF (config/symbols/history/time) — exposed to client THROUGH core/api"
+realtime      = "publishes candles:update redis channel; core/api streams it to clients via WSS/SSE"
+db_schema     = "candles/src/db/schema.ts. REUSE 1:1."
+go_target     = "core/trading-charts/internal/{builder,gapfill,udf,webhook}; cmd/chartsd"
+hard          = "OHLCV math exact (open/high/low/close/volume numeric, not float)"
+
+# ============================================================================
+# SECTION 7 — core/stats-workers/ MODULE SPEC (was stats)
+# ============================================================================
+[module.core_stats]
+dir           = "core/stats-workers/"
+maps_from     = "/sidiora/@analytics_microservices/stats/src (consumers/*, routes/*, services/*)"
+purpose       = "pool statistics, holder tracking, risk ratings (data processing)"
+consumers     = "swap-consumer, market-consumer, state-consumer, holder-tracker (consumers/, 5 files)"
+holders       = "holder enrichment via queue holder-enrichment [D3]"
+ingest        = "POST /webhooks/events (HMAC) + redis pub/sub (swap/market/state channels)"
+data_out      = "computed stats served to client THROUGH core/api; routes/* (10) read at phase start"
+db_schema     = "stats/src/db/schema.ts. REUSE 1:1."
+go_target     = "core/stats-workers/internal/{consume,holders,ratings,query}; cmd/statsd"
+
+# ============================================================================
+# SECTION 8 — core/pnl-tracker/ MODULE SPEC (was pnl)
+# ============================================================================
+[module.core_pnl]
+dir           = "core/pnl-tracker/"
+maps_from     = "/sidiora/@analytics_microservices/pnl/src (services/*, consumers/*, workers/*, routes/*)"
+purpose       = "position tracking, realized/unrealized PnL, referrals, shareable OG cards"
+services      = "position-service, card-service, referral-service, og-renderer (services/, 4)"
+consumer      = "swap-consumer (folds swaps -> positions)"
+worker        = "reconciler (workers/reconciler.ts) — idempotent via pnl.reconciler_cursor;"
+                "interval PNL_RECONCILE_INTERVAL_MS"
+og_render     = "renders PnL share images (Inter fonts -> *.png); Go = fogleman/gg + freetype"
+storage       = "rendered OG cards -> Cloudflare R2 bucket [L9] (local volume hot-cache optional)"
+data_out      = "positions/pnl/referrals served via core/api; OG card images served via media/gateway"
+db_schema     = "pnl/src/db/schema.ts (positions, referrals, reconciler_cursor). REUSE 1:1."
+go_target     = "core/pnl-tracker/internal/{position,referral,card,ogrender,reconcile,query}; cmd/pnld"
+hard          = "PnL math = realized/unrealized cost-basis in bigint micro-units; NO float"
+
+# ============================================================================
+# SECTION 9 — core/ranking-algo/ MODULE SPEC
+# ============================================================================
+[module.core_ranking]
+dir           = "core/ranking-algo/"
+maps_from     = "/sidiora/@market-microservices/ranking-algo/src (rankers/*, routes/*)"
+purpose       = "compute pool rankings on a schedule; cache ranked lists for the gateway"
+rankers       = "trending, breakout, top-volume, movers, unusual (rankers/trending.ts);"
+                "new-pools (rankers/new-pools.ts)"
+schedule      = "runAll every RANKING_TICK_INTERVAL_MS; runNew every RANKING_NEW_TICK_INTERVAL_MS"
+cache         = "results cached in Redis; served to client THROUGH core/api"
+db            = "reads stats/indexer schemas (no own write schema; read-mostly)"
+go_target     = "core/ranking-algo/internal/{rankers,schedule}; cmd/rankingd"
+note          = "stateless scheduled compute -> good early port to validate the module template"
+
+# ============================================================================
+# SECTION 10 — core/api/ MODULE SPEC (NEW — public DATA gateway / BFF)
+# ============================================================================
+[module.core_api]
+dir           = "core/api/"
+maps_from     = "NEW. Consolidates the per-service public read APIs the TS services exposed"
+                "(candles UDF, stats, pnl, ranking) + the client's server-side proxy layer"
+purpose       = "the ONLY public ingress for the DATA plane: feed the client via WSS/SSE +"
+                "expose a rate-limited public REST API; fan out to core/* services internally"
+realtime      = "WSS + SSE multiplexer: subscribes Redis channels (indexer:swap, candles:update,"
+                "indexer:pool_state_updated, ...) and pushes to subscribed clients; bounded buffers"
+rest          = "rate-limited public REST (Redis token bucket per IP/key); aggregates core reads;"
+                "response caching + ETag/304; CORS from CORS_ALLOWED_ORIGINS"
+auth          = "public (rate-limited) + optional API keys; wallet-gated routes via EIP-191"
+upstreams     = "trading-charts (UDF), stats-workers, pnl-tracker, ranking-algo, indexer reads"
+go_target     = "core/api/internal/{ws,sse,rest,proxy,ratelimit,cache}; cmd/apid"
+hard          = "MUST survive 500K concurrent: conn caps, per-conn send buffers, RAF-style"
+                "coalescing of high-freq ticks, circuit breakers on slow upstreams, load shedding"
+
+# ============================================================================
+# SECTION 11 — media/metadata/ MODULE SPEC
+# ============================================================================
+[module.media_metadata]
+dir           = "media/metadata/"
+maps_from     = "/sidiora/@media_microservices/metadata/src (index.ts ~26KB monolith, storage/*, db/*)"
+purpose       = "token metadata (name/symbol/socials/desc) + image storage (logos/banners)"
+storage       = "Cloudflare R2 bucket primary [L9] + local volume hot-cache; virus scan on upload"
+images        = "logos/, banners/ (png/jpg/svg/webp)"
+db_schema     = "metadata/src/db/schema.ts. REUSE 1:1."
+writes        = "write path driven by the media/gateway token-create wizard upload endpoint"
+go_target     = "media/metadata/internal/{store,image,scan,query}; cmd/metadatad"
+note          = "TS index.ts is a 26KB monolith (+ .bak) — DECOMPOSE in Go; enumerate every route"
+                "at phase start"
+
+# ============================================================================
+# SECTION 12 — media/user/ MODULE SPEC (was users)
+# ============================================================================
+[module.media_user]
+dir           = "media/user/"
+maps_from     = "/sidiora/@media_microservices/users/src (index.ts 331 lines, storage/*, db/*)"
+purpose       = "user profiles, avatars, watchlists; created-pools via cross-schema read"
+endpoints     = "GET/POST /users/:wallet (profile, EIP-191 sig on writes); POST/GET /users/:wallet/avatar"
+                "(multipart upload, 2MB cap, virus scan, mime allowlist webp/png/svg/jpeg);"
+                "GET/PUT/DELETE /users/:wallet/watchlist[/:pool]; GET /users/:wallet.json (public)"
+cross_schema  = "reads indexer.pools (creator -> createdPools) via schema-qualified query"
+storage       = "avatar bucket + volume cache (same pattern as media/metadata)"
+cache         = "redis user:<wallet> + user:json:<wallet> (EX 60); invalidate on write"
+db_schema     = "users/src/db/schema.ts (userProfiles, userImages, watchlists). REUSE 1:1."
+go_target     = "media/user/internal/{profile,avatar,watchlist,store,query}; cmd/userd"
+
+# ============================================================================
+# SECTION 13 — media/social/ MODULE SPEC (was chat)
+# ============================================================================
+[module.media_social]
+dir           = "media/social/"
+maps_from     = "/sidiora/@media_microservices/chat/src (ws/handler.ts, routes/*, db/*)"
+purpose       = "pool chat rooms + comments (and DMs) — realtime social layer"
+ws            = "realtime over WS; separate Redis pub + sub connections (subscriber can't issue"
+                "other commands). In Go the public WSS tunnel is FRONTED by media/gateway."
+routes        = "routes/pool-chat.ts, routes/dm.ts, routes/moderation.ts (admin CHAT_ADMIN_API_KEY)"
+rate_limit    = "60/60s; per-connection message rate limiting via Redis"
+db_schema     = "chat/src/db/schema.ts (messages, dms, bans/mutes) + comments. REUSE 1:1."
+go_target     = "media/social/internal/{room,dm,comment,moderation,fanout}; cmd/sociald"
+hard          = "WS backpressure + connection caps for 500K concurrency; bounded send buffers"
+
+# ============================================================================
+# SECTION 14 — media/livestream/ MODULE SPEC
+# ============================================================================
+[module.media_live]
+dir           = "media/livestream/"
+maps_from     = "/sidiora/@media_microservices/livestream/src (livepeer/client.ts, routes/streams.ts)"
+purpose       = "Livepeer-backed token livestreams (create/manage streams, playback ids)"
+livepeer      = "livepeer/client.ts — REST client (LIVEPEER_API_KEY, LIVEPEER_API_URL)"
+routes        = "create/get/list streams; pool association"
+db_schema     = "livestream/src/db/schema.ts (streams). REUSE 1:1."
+go_target     = "media/livestream/internal/{livepeer,query}; cmd/livestreamd"
+note          = "smallest service; good warm-up port to validate the module template"
+
+# ============================================================================
+# SECTION 15 — media/gateway/ MODULE SPEC (NEW — public MEDIA edge)
+# ============================================================================
+[module.media_gateway]
+dir           = "media/gateway/ (PROPOSED — confirm name)"
+maps_from     = "NEW. Consolidates media-serving + chat/comment realtime + upload paths"
+purpose       = "public media edge: (1) serve media (avatars/logos/banners/og) with aggressive"
+                "caching + CDN headers, (2) realtime WSS tunnel for chat + comments (fronts"
+                "media/social), (3) token-create wizard UPLOAD endpoint -> virus scan -> bucket"
+                "+ metadata write"
+caching       = "immutable cache headers, Redis hot cache, range requests, ETag/304"
+upload        = "multipart upload (size caps + mime allowlist + clamd scan) used by create wizard;"
+                "persists to bucket then writes media/metadata row atomically"
+realtime      = "WSS fan-out for media/social (chat + comments); bounded buffers + backpressure"
+go_target     = "media/gateway/internal/{serve,cache,ws,upload,scan}; cmd/mediagatewayd"
+hard          = "edge service — 500K-ready: conn caps, streaming I/O (no full-buffer), load shedding"
+
+# ============================================================================
+# SECTION 16 — CROSS-CUTTING INVARIANTS
+# ============================================================================
+[invariants]
+i1_money      = "HARD: all token/price/fee/PnL math in math/big.Int or uint256; no float64 ever"
+i2_schema     = "Go services target the EXISTING Postgres schemas/tables unchanged; migrations"
+                "ported to goose but produce identical DDL; verified by schema diff vs live DB"
+i3_webhook    = "HMAC-SHA256 webhook sig + timestamp must be byte-compatible with TS"
+                "(shared webhook-auth.ts) so a Go indexer can feed TS consumers and vice-versa"
+i4_eip191     = "wallet signature verify = EIP-191 personal_sign recover, address compared"
+                "case-insensitively (lowercased) — parity with verifyWalletSignature"
+i5_channels   = "Redis channel names + payload JSON shapes identical to CHANNELS constants"
+i6_health     = "every service: GET /health, /health/live, /health/ready (ready checks DB+Redis)"
+i7_shutdown   = "graceful drain on SIGTERM/SIGINT; finish in-flight, close pools, flush"
+i8_config     = "env var names unchanged from docker-envs/<svc>.env so deploy configs port as-is"
+i9_idempotent = "consumers/reconcilers idempotent (cursors); webhook handlers safe on redelivery"
+i10_tests     = "HARD: EVERY package has unit tests; CI blocks merge below coverage gate (SECTION 17)"
+i11_backpressure = "every WSS/SSE path has bounded send buffers + slow-client eviction; no unbounded"
+                "goroutine/connection growth — verified under load"
+i12_ratelimit = "all public ingress (core/api, media/gateway) rate-limited per IP + per key;"
+                "load-shed with 429 over capacity; circuit-break slow upstreams"
+
+# ============================================================================
+# SECTION 17 — ENGINEERING STANDARDS & QUALITY BARS (HARD — CI-enforced)
+# ============================================================================
+[standards.testing]
+unit          = "HARD: every package ships _test.go; table-driven; cover happy + error + boundary."
+                "Pure logic (money math, decoders, rankers, PnL fold, OHLCV) -> 100% line+branch."
+coverage_gate = "CI FAILS under 85% repo-wide; under 90% for shared/, protocol/, core/indexer,"
+                "core/pnl-tracker, core/trading-charts (money/correctness-critical)"
+integration   = "testcontainers-go spins REAL Postgres+Redis; consumers/queries tested end-to-end"
+parity        = "golden tests: Go output == TS output for every ported endpoint/consumer/decoder"
+                "(same DB fixture in -> identical JSON/row/HMAC out)"
+http_test     = "httptest for every handler; WSS/SSE tested with real client conns + slow-client cases"
+race          = "go test -race in CI; ZERO data races tolerated"
+fuzz          = "native fuzz for decoders (event/log parsing) + money/format parsers"
+load          = "k6/vegeta soak per edge path BEFORE cutover; documented RPS + p99 + conn ceilings"
+no_skip       = "no t.Skip in CI; flaky tests are quarantined + FIXED, never deleted (no-regression)"
+
+[standards.code]
+lint          = "golangci-lint (errcheck, govet, staticcheck, gosec, revive, gocritic, bodyclose,"
+                "sqlclosecheck, contextcheck, errorlint, noctx) — ZERO warnings in CI"
+fmt           = "gofmt + goimports clean; enforced in CI"
+errors        = "wrap with %w + context; never swallow; sentinel/typed errors for control flow"
+context       = "context.Context threaded through all I/O; deadlines on every external call"
+concurrency   = "no goroutine leaks (lifecycle tied to ctx); bounded worker pools; race-clean"
+resources     = "every Close()/Rows defer-checked; pgxpool + redis pools sized + tuned per service"
+security      = "gosec clean; secrets ONLY via shared/secrets (never logged); validate all input;"
+                "constant-time compares for keys/HMAC; SQL only via params (no string concat)"
+api_contract  = "OpenAPI per public surface (core/api, media/gateway); generated types; versioned"
+docs          = "every exported symbol documented; each module ships <name>.frozen.kvx + README"
+
+[standards.production_500k]
+capacity      = "every service has a documented capacity model (RPS, conns, mem) + autoscale signal"
+slo           = "p99 latency + availability SLOs per service; error budget tracked"
+observability = "structured logs (slog) + Prometheus metrics + OTel traces + RED/USE dashboards"
+probes        = "/health/live + /health/ready (deep dependency checks) wired to orchestrator probes"
+resilience    = "circuit breakers + timeouts + retries-with-jitter on all upstream/RPC calls;"
+                "graceful degradation (serve stale cache) over hard failure"
+backpressure  = "bounded queues + buffers everywhere; load-shed + 429 over capacity; no OOM path"
+caching       = "Redis hot cache + in-proc LRU for read-heavy paths; stampede protection (singleflight)"
+db_scale      = "read replicas for read-heavy queries; prepared statements; slow-query logging"
+deploy_safety = "zero-downtime rolling deploys; DB migrations backward-compatible (expand/contract)"
+rollback      = "every deploy reversible; feature flags gate risky cutovers"
+
+[standards.git]
+ci            = "build + vet + lint + race tests + coverage gate + parity + load smoke on every PR"
+no_merge_red  = "HARD: no merge while CI red; no force-push to main; protected branches; CODEOWNERS"
+commits       = "conventional commits; small reviewable PRs"
+
+# ============================================================================
+# SECTION 18 — DECISIONS (open need sign-off; locked are final)
+# ============================================================================
+[decisions.open]
+D6_deploy      = "registry + host for the new Go images (ghcr? new?) — affects deploy/ scripts."
+                 "DEFERRED by user 2026-06-22; deploy/ scaffolded registry-AGNOSTIC until chosen."
+
+[decisions.locked]
+L1            = "Domain-grouped INDEPENDENT Go modules under core/ and media/ (user, 2026-06-22)"
+L2            = "KindleLaunch adopts Matrix-core monorepo convention (user, 2026-06-22)"
+L3            = "Reuse existing Postgres schemas 1:1 to enable strangler cutover (plan default)"
+L4            = "meta-ag EXCLUDED — not yet deployed on the new chain (user, 2026-06-22)"
+L5            = "market-maker EXCLUDED — owner-operated add-on, handled separately (user, 2026-06-22)"
+L6            = "core/api = public DATA gateway (WSS/SSE + rate-limited REST); media/gateway = media edge"
+                "(serve+cache + chat/comment WSS tunnel + wizard upload) (user, 2026-06-22)"
+L7            = "EVERY package unit-tested + 500K-day-one production bar — HARD (user, 2026-06-22)"
+L8            = "Module root = github.com/Sidiora-Technologies/KindleLaunch; leaf modules are"
+                "<root>/<group>/<svc> (e.g. .../core/indexer, .../media/user, .../shared, .../protocol)"
+                "(user, 2026-06-22)"
+L9            = "Object storage = Cloudflare R2 (S3-compatible) for ALL buckets — token metadata"
+                "images, user avatars, pnl OG cards, media serving. Accessed via aws-sdk-go-v2 S3"
+                "client pointed at the R2 endpoint. (user, 2026-06-22)"
+L10_D1_http   = "HTTP layer = chi v5 over net/http (stdlib-compatible, otelhttp/pprof). (user, 2026-06-22)"
+L11_D2_db     = "DB layer = pgx/v5 (pgxpool) + sqlc type-safe codegen + goose migrations. (user, 2026-06-22)"
+L12_D3_queue  = "Queues = hibiken/asynq (Redis-backed, BullMQ-like); Go producer+consumer move"
+                "together per queue. (user, 2026-06-22)"
+L13_D4_cutover = "Cutover = strangler per-service against the SAME Postgres+Redis as TS. (user, 2026-06-22)"
+L14_D7_shared = "shared/ = single top-level Go module github.com/Sidiora-Technologies/KindleLaunch/shared,"
+                "consumed by every leaf via replace ../../shared. (user, 2026-06-22)"
+L15_D8_gw     = "Gateway module names CONFIRMED: core/api (data edge) + media/gateway (media edge)."
+                "(user, 2026-06-22)"
+D6_status     = "D6 (deploy registry/host) DEFERRED by user 2026-06-22; deploy/ stays registry-agnostic."
+
+# ============================================================================
+# SECTION 19 — EXECUTION PHASES (one module per session; dependency-ordered)
+# ============================================================================
+[phases]
+note          = "each phase: author <module>/<name>.frozen.kvx (deep read of TS) -> implement ->"
+                "build/vet/lint/race/coverage green -> parity test vs TS -> load smoke -> stage."
+P0            = "Repo scaffolding: root Makefile, .golangci.yml, go.work, module skeletons,"
+                "CI (coverage gate), deploy/ + knowledge/ wiring, licenses/. Lock D1-D8."
+P1_shared     = "shared/ runtime module — config, db(pgxpool), redis(pubsub/cache), queue, log, http"
+                "(server/health/error/ratelimit/apikey/virusscan), auth(eip191+webhook hmac),"
+                "process, constants, secrets, util. 90%+ coverage on testcontainers."
+P2_protocol   = "protocol/ — export ABIs from launchpad_v3_core, abigen bindings, event registry,"
+                "typed address book. (Meta-AG ABIs deferred.)"
+P3_livestream = "media/livestream/ — smallest; validates the full module template end-to-end."
+P4_user       = "media/user/ — profiles/avatars/watchlists; storage + EIP-191 + cross-schema."
+P5_metadata   = "media/metadata/ — decompose 26KB monolith; bucket storage + image + scan."
+P6_ranking    = "core/ranking-algo/ — stateless scheduled compute; redis cache + cron."
+P7_charts     = "core/trading-charts/ — OHLCV engine + TradingView UDF + gap fill (real-time critical)."
+P8_stats      = "core/stats-workers/ — consumers + holders + ratings; validates queue [D3]."
+P9_pnl        = "core/pnl-tracker/ — positions + referrals + OG render + reconciler."
+P10_social    = "media/social/ — chat + comments + moderation (realtime; processed, gateway fronts WSS)."
+P11_indexer   = "core/indexer/ — the spine; live+backfill, 3 sources, webhook+pubsub fan-out,"
+                "reorg hardening. High effort; may span 2-3 sessions."
+P12_core_api  = "core/api/ — public DATA gateway: WSS/SSE multiplexer + rate-limited REST; 500K load test."
+P13_media_gw  = "media/gateway/ — public MEDIA edge: serve+cache + chat/comment WSS tunnel + wizard upload."
+P14_cutover   = "per-service strangler cutover + deploy/ finalization + decommission TS."
+
+[phases.depgraph]
+edges         = "shared -> {all}; protocol -> {indexer, chain readers};"
+                "indexer -> {trading-charts, stats-workers, pnl-tracker} (event producers->consumers);"
+                "stats-workers -> ranking-algo (reads stats); indexer.pools -> media/user (cross-schema);"
+                "{trading-charts, stats-workers, pnl-tracker, ranking-algo, indexer} -> core/api;"
+                "{metadata, user, social, livestream} -> media/gateway"
+
+# ============================================================================
+# SECTION 20 — VERIFICATION (per-module gates)
+# ============================================================================
+[verify]
+build         = "go build ./... && go vet ./... && gofmt -l . (clean) && golangci-lint run (zero)"
+test          = "go test -race ./... (real Postgres+Redis via testcontainers; no fakes)"
+coverage      = "coverage gate enforced (>=85% repo, >=90% money/correctness modules) — SECTION 17"
+parity        = "for each ported endpoint/consumer: golden test asserting Go output == TS output"
+                "(same DB fixture row in, same JSON/row out); webhook HMAC byte-compat test"
+schema_diff   = "dump live PG schema; assert goose migrations reproduce it byte-identically"
+load          = "k6/vegeta soak per edge/realtime path (core/api WSS+SSE, media/gateway, charts)"
+                "to documented 500K-target RPS + conn ceilings BEFORE cutover"
+ops_gate      = "core/indexer + gateways require explicit user YES before any live deploy (high blast)"
+
+# ============================================================================
+# SECTION 21 — SESSION LOG
+# ============================================================================
+[log]
+s0            = "2026-06-22 — authored frozen master plan v0.1.0. Grounded in /sidiora source"
+                "(11 TS services + shared + indexer; webhooks+redis+bull; 10 contracts)."
+s1            = "2026-06-22 — v0.2.0 REVISION: matched REAL /root/KindleLaunch skeleton"
+                "(core/ + media/ domain groups). Renamed candles->trading-charts, stats->stats-workers,"
+                "pnl->pnl-tracker, users->media/user, chat->media/social. Added core/api + media/gateway"
+                "gateways. EXCLUDED meta-ag (off new chain) + market-maker (owner add-on). Added"
+                "SECTION 17 Engineering Standards (tests-everywhere + 500K bars). Locked L1-L7."
+s2            = "2026-06-22 — v0.2.1: locked L8 module root github.com/Sidiora-Technologies/KindleLaunch"
+                "+ L9 Cloudflare R2 for all object storage (metadata/avatars/og). Remaining open:"
+                "D1 http, D2 db, D3 queues, D4 cutover, D6 deploy, D7 shared, D8 gateway names."
+                "NEXT: lock D1-D8, then P0 scaffolding."
+s3            = "2026-06-22 — v0.3.0: locked stack decisions L10-L15 (D1 chi, D2 pgx+sqlc+goose,"
+                "D3 asynq, D4 strangler, D7 single top-level shared/, D8 core/api+media/gateway)."
+                "D6 deploy registry/host DEFERRED (deploy/ scaffolded registry-agnostic). Beginning"
+                "P0 scaffolding: go.work + 13 module go.mod skeletons + Makefile + .golangci.yml +"
+                "CI coverage gate + deploy/ + licenses/."
+s4            = "2026-06-22 — P0 DONE + VERIFIED (Go 1.23.10 installed at /usr/local/go). go.work +"
+                "13 leaf go.mod (replace wiring protocol<-nil, shared<-protocol, leaves<-both) +"
+                "Makefile (build/vet/fmt/lint/race/cover-check, empty modules auto-skipped via"
+                "go list guard) + .golangci.yml + tools/coverage-gate.sh + CI (PG16+Redis7) +"
+                "registry-agnostic deploy/. P1 shared/ FOUNDATION done+green: constants, util"
+                "(FormatPrice/Volume + HashToInt64, golden parity vs live TS on Node v24), log"
+                "(slog JSON + secret redaction), config (caarlos0/env + zod-parity validation)."
+                "shared coverage 98.4% (>=90% money gate), race-clean, gofmt+vet clean. REMAINING"
+                "P1: db(pgxpool), redis(pubsub/cache), queue(asynq), chain(ethclient+protocol),"
+                "auth(eip191+webhook hmac), http(server/health/error/ratelimit/apikey/virusscan),"
+                "process, secrets — db/redis use testcontainers (Docker 29.1.3 present)."

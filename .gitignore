@@ -1,0 +1,22 @@
+# Go build / test artifacts
+/.cover/
+*.out
+*.test
+*.prof
+bin/
+dist/
+client/
+
+# Local env (never commit secrets — SECTION 17 security)
+*.env
+!docker-envs/*.env.example
+.env
+.env.*
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+
+# Tooling caches
+.golangci-cache/

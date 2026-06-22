@@ -1,0 +1,16 @@
+# Strangler bring-up (L13 D4): run Go services against the SAME Postgres + Redis
+# as the TS stack so they can be cut over one at a time. This file deliberately
+# defines NO service containers yet — they are added per phase as each leaf ships
+# its cmd/<svcd>. Connection targets come from the existing docker-envs/<svc>.env.
+#
+#   docker compose -f deploy/docker-compose.strangler.yml up <svc>
+services: {}
+# Template (uncomment + copy per service as it lands):
+#  indexer:
+#    build:
+#      context: ..
+#      dockerfile: deploy/Dockerfile.svc
+#      args: { SERVICE: core/indexer, BIN: indexerd }
+#    env_file: [../../sidiora/docker-envs/indexer.env]   # same env as TS (i8)
+#    network_mode: host
+#    restart: unless-stopped
