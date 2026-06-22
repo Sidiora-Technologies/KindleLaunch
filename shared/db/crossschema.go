@@ -18,7 +18,7 @@ const (
 const (
 	TableIndexerPools          = "indexer.pools"
 	TableStatsPoolStats        = "stats.pool_stats"
-	TableMetadataTokenMetadata = "metadata.token_metadata"
+	TableMetadataTokenMetadata = "metadata.token_metadata" //nolint:gosec // G101 false positive: schema-qualified table name, not a credential
 )
 
 // IndexerPool mirrors indexer.pools (cross-schema.ts indexerPools).

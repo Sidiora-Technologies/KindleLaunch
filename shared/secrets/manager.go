@@ -77,14 +77,17 @@ func New(opts Options) Provider {
 type EnvProvider struct{}
 
 // Get implements Provider.
-func (EnvProvider) Get(_ context.Context, key string) (string, bool, error) {
+func (EnvProvider) Get(_ context.Context, key string) (value string, found bool, err error) {
 	v, ok := os.LookupEnv(key)
 	return v, ok, nil
 }
 
 // GetRequired implements Provider.
 func (e EnvProvider) GetRequired(ctx context.Context, key string) (string, error) {
-	v, ok, _ := e.Get(ctx, key)
+	v, ok, err := e.Get(ctx, key)
+	if err != nil {
+		return "", err
+	}
 	if !ok || v == "" {
 		return "", fmt.Errorf("secrets: required secret %q not found in environment", key)
 	}
@@ -116,7 +119,7 @@ func newCached(delegate Provider, ttl time.Duration, now func() time.Time) *cach
 	}
 }
 
-func (c *cachedProvider) Get(ctx context.Context, key string) (string, bool, error) {
+func (c *cachedProvider) Get(ctx context.Context, key string) (value string, found bool, err error) {
 	c.mu.Lock()
 	if e, ok := c.cache[key]; ok && e.expiresAt.After(c.now()) {
 		c.mu.Unlock()

@@ -11,7 +11,7 @@ import (
 )
 
 // CacheGet returns the JSON-decoded value at key. found is false on cache miss.
-func CacheGet[T any](ctx context.Context, rdb *redis.Client, key string) (T, bool, error) {
+func CacheGet[T any](ctx context.Context, rdb *redis.Client, key string) (value T, found bool, err error) {
 	var zero T
 	raw, err := rdb.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {

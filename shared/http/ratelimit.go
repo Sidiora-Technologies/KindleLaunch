@@ -26,9 +26,9 @@ type RateLimitOptions struct {
 // RateLimit returns a chi-compatible middleware enforcing the limit, setting
 // X-RateLimit-* headers and returning 429 when exceeded (i12 load-shedding).
 func RateLimit(opts RateLimitOptions) func(http.Handler) http.Handler {
-	max := opts.Max
-	if max <= 0 {
-		max = 100
+	maxN := opts.Max
+	if maxN <= 0 {
+		maxN = 100
 	}
 	window := opts.Window
 	if window <= 0 {
@@ -51,16 +51,16 @@ func RateLimit(opts RateLimitOptions) func(http.Handler) http.Handler {
 			var allowed bool
 			var remaining int
 			if opts.Redis != nil {
-				a, rem, err := checkRedis(r.Context(), opts.Redis, key, max, window)
+				a, rem, err := checkRedis(r.Context(), opts.Redis, key, maxN, window)
 				if err != nil {
-					a, rem = store.check(key, max, window)
+					a, rem = store.check(key, maxN, window)
 				}
 				allowed, remaining = a, rem
 			} else {
-				allowed, remaining = store.check(key, max, window)
+				allowed, remaining = store.check(key, maxN, window)
 			}
 
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(max))
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(maxN))
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 			if !allowed {
 				WriteError(w, http.StatusTooManyRequests, "Too Many Requests",

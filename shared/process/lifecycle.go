@@ -50,7 +50,7 @@ func (o Options) signals() []os.Signal {
 // OnShutdown under a timeout-bounded context. It returns the shutdown hook's
 // error, or context.DeadlineExceeded if the hook overruns the timeout. Run never
 // calls os.Exit, leaving the exit code to the caller (testable).
-func Run(ctx context.Context, opts Options) error {
+func Run(ctx context.Context, opts Options) error { //nolint:contextcheck // shutdown ctx is intentionally rooted at Background() (see below) so the drain window outlives the already-cancelled parent
 	sigCtx, stop := signal.NotifyContext(ctx, opts.signals()...)
 	defer stop()
 
@@ -59,6 +59,10 @@ func Run(ctx context.Context, opts Options) error {
 		opts.Logger.Info("received shutdown trigger, draining")
 	}
 
+	// The shutdown context is intentionally rooted at context.Background(), not
+	// the incoming ctx: by the time we get here ctx is already cancelled (that is
+	// what triggered shutdown), so inheriting it would cancel the drain window
+	// immediately. The timeout is the sole bound on OnShutdown.
 	shutCtx, cancel := context.WithTimeout(context.Background(), opts.timeout())
 	defer cancel()
 

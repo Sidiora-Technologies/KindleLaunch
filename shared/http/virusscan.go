@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"os"
 	"strconv"
@@ -53,7 +54,9 @@ func ScanBuffer(ctx context.Context, data []byte, opts ScanOptions) ScanResult {
 		return ScanResult{Clean: true, Reason: "clamav-unreachable"}
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return ScanResult{Clean: true, Reason: "clamav-unreachable"}
+	}
 
 	// INSTREAM: "zINSTREAM\0", then [uint32 BE len][data], then [uint32 0].
 	if _, err := conn.Write([]byte("zINSTREAM\x00")); err != nil {
@@ -75,7 +78,8 @@ func ScanBuffer(ctx context.Context, data []byte, opts ScanOptions) ScanResult {
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil && n == 0 {
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		var ne net.Error
+		if errors.As(err, &ne) && ne.Timeout() {
 			return ScanResult{Clean: true, Reason: "clamav-timeout"}
 		}
 		return ScanResult{Clean: true, Reason: "clamav-unreachable"}

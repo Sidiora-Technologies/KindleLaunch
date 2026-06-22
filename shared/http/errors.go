@@ -16,7 +16,11 @@ type ErrorResponse struct {
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		// Status and headers are already committed; the client likely
+		// disconnected mid-write. Nothing further can be done.
+		return
+	}
 }
 
 // WriteError writes a JSON error. For 5xx the message is masked to avoid leaking

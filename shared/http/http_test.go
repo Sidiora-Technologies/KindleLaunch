@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -342,5 +343,71 @@ func TestClientIP(t *testing.T) {
 	req.RemoteAddr = "no-port"
 	if got := clientIP(req); got != "no-port" {
 		t.Errorf("clientIP fallback = %q", got)
+	}
+}
+
+func TestResolveClientIP(t *testing.T) {
+	t.Parallel()
+	trusted := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("192.168.0.0/16"),
+	}
+	cases := []struct {
+		name       string
+		remoteAddr string
+		xff        string
+		xRealIP    string
+		trusted    []netip.Prefix
+		want       string
+	}{
+		{"no trusted proxies ignores headers", "10.0.0.1:9000", "1.2.3.4", "1.2.3.4", nil, ""},
+		{"untrusted peer ignores headers", "8.8.8.8:443", "1.2.3.4", "1.2.3.4", trusted, ""},
+		{"trusted peer uses rightmost untrusted XFF", "10.0.0.1:9000", "1.2.3.4, 192.168.1.5, 10.0.0.1", "", trusted, "1.2.3.4"},
+		{"trusted peer falls back to X-Real-IP", "192.168.1.1:80", "", "203.0.113.9", trusted, "203.0.113.9"},
+		{"trusted peer, all hops trusted -> empty", "10.0.0.1:9000", "10.1.1.1, 192.168.0.9", "", trusted, ""},
+		{"trusted peer, no headers -> empty", "10.0.0.1:9000", "", "", trusted, ""},
+		{"bare host (no port) trusted peer", "10.0.0.2", "1.2.3.4", "", trusted, "1.2.3.4"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := http.Header{}
+			if c.xff != "" {
+				h.Set("X-Forwarded-For", c.xff)
+			}
+			if c.xRealIP != "" {
+				h.Set("X-Real-IP", c.xRealIP)
+			}
+			if got := resolveClientIP(c.remoteAddr, h, c.trusted); got != c.want {
+				t.Errorf("resolveClientIP(%q) = %q, want %q", c.remoteAddr, got, c.want)
+			}
+		})
+	}
+}
+
+func TestRealIPMiddleware(t *testing.T) {
+	t.Parallel()
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	var seen string
+	h := realIP(trusted)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		seen = r.RemoteAddr
+	}))
+
+	// Trusted peer: forwarded client IP is adopted.
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	req.RemoteAddr = "10.0.0.1:5000"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "203.0.113.7" {
+		t.Errorf("trusted peer RemoteAddr = %q, want 203.0.113.7", seen)
+	}
+
+	// Untrusted peer: RemoteAddr is left intact (no spoofing).
+	req = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	req.RemoteAddr = "8.8.8.8:443"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "8.8.8.8:443" {
+		t.Errorf("untrusted peer RemoteAddr = %q, want 8.8.8.8:443 (unchanged)", seen)
 	}
 }

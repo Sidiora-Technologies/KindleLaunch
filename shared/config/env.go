@@ -59,7 +59,7 @@ func Load() (BaseEnv, error) {
 }
 
 // Validate enforces the same field-level rules as the zod baseEnvSchema.
-func (c BaseEnv) Validate() error {
+func (c *BaseEnv) Validate() error {
 	var errs []error
 
 	if err := requireHTTPURL("DATABASE_URL", c.DatabaseURL); err != nil {

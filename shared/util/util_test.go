@@ -28,8 +28,10 @@ func TestHashToInt64Parity(t *testing.T) {
 func TestHashToInt64Deterministic(t *testing.T) {
 	t.Parallel()
 	const k = "pool:0xdeadbeef"
-	if HashToInt64(k) != HashToInt64(k) {
-		t.Fatal("HashToInt64 not deterministic")
+	first := HashToInt64(k)
+	second := HashToInt64(k)
+	if first != second {
+		t.Fatalf("HashToInt64 not deterministic: %d != %d", first, second)
 	}
 	if got := HashToInt64(k); got < 0 {
 		t.Fatalf("HashToInt64(%q) = %d, must be non-negative (fits pg int8)", k, got)
