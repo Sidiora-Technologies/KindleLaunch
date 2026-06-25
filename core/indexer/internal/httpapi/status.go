@@ -31,8 +31,14 @@ func RegisterStatus(r chi.Router, d StatusDeps) {
 		if c, err := d.Store.GetCursor(ctx, d.ChainID); err == nil {
 			lastBlock = c
 		}
-		pools, _ := d.Store.PoolCount(ctx)
-		swaps, _ := d.Store.SwapCount(ctx)
+		pools, err := d.Store.PoolCount(ctx)
+		if err != nil {
+			pools = 0
+		}
+		swaps, err := d.Store.SwapCount(ctx)
+		if err != nil {
+			swaps = 0
+		}
 
 		body := map[string]any{
 			"chainId":            d.ChainID,

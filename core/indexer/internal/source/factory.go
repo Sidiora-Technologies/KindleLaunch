@@ -49,7 +49,7 @@ func Create(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Bundl
 	var evm *EVMSource
 	evmOrInit := func(urls []string, name string) (*EVMSource, error) {
 		if evm == nil {
-			e, err := NewEVM(EVMOptions{
+			e, err := NewEVM(ctx, EVMOptions{
 				RPCURLs:            urls,
 				Logger:             logger,
 				Name:               name,

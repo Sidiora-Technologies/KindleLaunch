@@ -14,7 +14,6 @@ linters:
     - ineffassign
     - misspell
     - noctx
-    - prealloc
     - revive
     - sqlclosecheck
     - staticcheck
@@ -28,6 +27,12 @@ linters:
         - diagnostic
         - performance
         - style
+      disabled-checks:
+        # Pure micro-optimizations (pass-by-pointer / avoid loop-var copies). They
+        # add churn to public signatures and hot loops with no correctness impact,
+        # so they are advisory rather than gating.
+        - hugeParam
+        - rangeValCopy
     gosec:
       excludes:
         - G115

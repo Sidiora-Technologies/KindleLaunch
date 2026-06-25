@@ -205,7 +205,9 @@ func Run(parent context.Context) error {
 		app.Publisher.SetBackfillMode(false)
 		if cfg.BackfillOnly {
 			logger.Info("backfill complete — BACKFILL_ONLY=true, exiting")
-			shutdownServer(srv)
+			if err := shutdownServer(ctx, srv); err != nil {
+				logger.Warn("graceful shutdown error", slog.Any("err", err))
+			}
 			return firstNonShutdownErr(serveErr)
 		}
 		logger.Info("backfill complete — transitioning to live mode")
@@ -235,10 +237,10 @@ func Run(parent context.Context) error {
 	}
 }
 
-func shutdownServer(srv *http.Server) {
-	sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
+func shutdownServer(ctx context.Context, srv *http.Server) error {
+	sctx, scancel := context.WithTimeout(ctx, 10*time.Second)
 	defer scancel()
-	_ = srv.Shutdown(sctx)
+	return srv.Shutdown(sctx)
 }
 
 func firstNonShutdownErr(serveErr <-chan error) error {

@@ -133,7 +133,7 @@ func TestEVMHeadAndFetchLogs(t *testing.T) {
 	}
 	srv := jsonRPC(t, 100, logs, blocks)
 
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}, Name: "rpc"})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}, Name: "rpc"})
 	if err != nil {
 		t.Fatalf("NewEVM: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestEVMHeadAndFetchLogs(t *testing.T) {
 func TestEVMFetchLogsEmpty(t *testing.T) {
 	t.Parallel()
 	srv := jsonRPC(t, 50, []map[string]any{}, nil)
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestEVMMultiURLNameAndFailover(t *testing.T) {
 	t.Parallel()
 	primary := failingRPC(t)
 	fallback := jsonRPC(t, 77, nil, nil)
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{primary.URL, fallback.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{primary.URL, fallback.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestEVMMultiURLNameAndFailover(t *testing.T) {
 func TestEVMAllNodesFail(t *testing.T) {
 	t.Parallel()
 	srv := failingRPC(t)
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestEVMStaleQuarantine(t *testing.T) {
 	t.Parallel()
 	stale := jsonRPC(t, 10, nil, nil)  // far behind
 	fresh := jsonRPC(t, 100, nil, nil) // at head
-	s, err := NewEVM(EVMOptions{
+	s, err := NewEVM(context.Background(), EVMOptions{
 		RPCURLs:        []string{stale.URL, fresh.URL},
 		StaleThreshold: 50,
 		HealthInterval: time.Hour, // no background re-rank during the test
@@ -246,7 +246,7 @@ func TestEVMStaleQuarantine(t *testing.T) {
 
 func TestNewEVMRequiresURL(t *testing.T) {
 	t.Parallel()
-	if _, err := NewEVM(EVMOptions{}); err == nil {
+	if _, err := NewEVM(context.Background(), EVMOptions{}); err == nil {
 		t.Error("NewEVM with no URLs should error")
 	}
 }
@@ -257,7 +257,7 @@ func TestEVMFetchLogsBlockNull(t *testing.T) {
 	logs := []map[string]any{logObj(emitter, []common.Hash{swapTopic(t)}, nil, 16, common.HexToHash("0xa1"), 0)}
 	// blocks map empty -> eth_getBlockByNumber returns null -> getBlock errors.
 	srv := jsonRPC(t, 100, logs, map[uint64]map[string]any{})
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestEVMFetchLogsBadTimestamp(t *testing.T) {
 	logs := []map[string]any{logObj(emitter, []common.Hash{swapTopic(t)}, nil, 16, common.HexToHash("0xa1"), 0)}
 	blocks := map[uint64]map[string]any{16: {"timestamp": "notahex", "transactions": []map[string]any{}}}
 	srv := jsonRPC(t, 100, logs, blocks)
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestEVMRPCErrorResponse(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	s, err := NewEVM(EVMOptions{RPCURLs: []string{srv.URL}})
+	s, err := NewEVM(context.Background(), EVMOptions{RPCURLs: []string{srv.URL}})
 	if err != nil {
 		t.Fatal(err)
 	}

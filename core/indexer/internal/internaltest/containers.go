@@ -33,7 +33,11 @@ func NewPostgres(t *testing.T) (string, *pgxpool.Pool) {
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
-	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
+	t.Cleanup(func() {
+		if err := ctr.Terminate(ctx); err != nil {
+			t.Logf("terminate container: %v", err)
+		}
+	})
 
 	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
@@ -66,7 +70,11 @@ func NewRedisURL(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("start redis container: %v", err)
 	}
-	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
+	t.Cleanup(func() {
+		if err := ctr.Terminate(ctx); err != nil {
+			t.Logf("terminate container: %v", err)
+		}
+	})
 	uri, err := ctr.ConnectionString(ctx)
 	if err != nil {
 		t.Fatalf("redis connection string: %v", err)

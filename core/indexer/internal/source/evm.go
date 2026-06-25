@@ -69,7 +69,7 @@ type EVMSource struct {
 }
 
 // NewEVM builds an EVMSource and starts its background health monitor.
-func NewEVM(opts EVMOptions) (*EVMSource, error) {
+func NewEVM(ctx context.Context, opts EVMOptions) (*EVMSource, error) {
 	if len(opts.RPCURLs) == 0 {
 		return nil, fmt.Errorf("source: at least one RPC URL is required")
 	}
@@ -129,7 +129,7 @@ func NewEVM(opts EVMOptions) (*EVMSource, error) {
 
 	// Initial health check + periodic re-rank. Until the first check
 	// completes every node is treated as healthy in slot order.
-	s.runHealthCheck(context.Background())
+	s.runHealthCheck(ctx)
 	s.healthWG.Add(1)
 	go func() {
 		defer s.healthWG.Done()
@@ -139,8 +139,10 @@ func NewEVM(opts EVMOptions) (*EVMSource, error) {
 			select {
 			case <-s.stop:
 				return
+			case <-ctx.Done():
+				return
 			case <-t.C:
-				s.runHealthCheck(context.Background())
+				s.runHealthCheck(ctx)
 			}
 		}
 	}()
