@@ -76,7 +76,7 @@ func search(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 			"query":   strings.TrimSpace(rawQ),
 		}
 		if payload, err := json.Marshal(result); err == nil {
-			_ = rdb.Set(ctx, cacheKey, payload, searchCacheTTL).Err()
+			rdb.Set(ctx, cacheKey, payload, searchCacheTTL)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, result)
 	}

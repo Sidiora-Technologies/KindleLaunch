@@ -92,7 +92,7 @@ func whales(st *store.Store) http.HandlerFunc {
 				PctOfSupplyHuman: humanPct(float64(pctInt)),
 				USDLValue:        nil,
 				LastUpdated:      h.LastUpdated,
-				IsCreator:        creatorAddr != "" && strings.ToLower(h.HolderAddress) == creatorAddr,
+				IsCreator:        creatorAddr != "" && strings.EqualFold(h.HolderAddress, creatorAddr),
 			})
 		}
 

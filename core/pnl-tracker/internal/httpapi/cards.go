@@ -114,7 +114,7 @@ func ogImage(deps CardDeps) http.HandlerFunc {
 			return
 		}
 		if deps.Redis != nil {
-			_ = deps.Redis.Set(ctx, key, png, pnlcache.OGTTL*time.Second).Err()
+			deps.Redis.Set(ctx, key, png, pnlcache.OGTTL*time.Second)
 		}
 		writePNG(w, png)
 	}
@@ -125,5 +125,7 @@ func writePNG(w http.ResponseWriter, png []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(png)
+	if _, err := w.Write(png); err != nil {
+		return
+	}
 }

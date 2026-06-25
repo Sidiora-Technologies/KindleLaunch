@@ -198,7 +198,7 @@ func (s *Store) withXactLock(ctx context.Context, lockKey string, fn func(pgx.Tx
 	if err != nil {
 		return fmt.Errorf("store: begin tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback(ctx) }() //nolint:errcheck // no-op after commit; rollback is best-effort cleanup
 
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, lockID(lockKey)); err != nil {
 		return fmt.Errorf("store: advisory lock: %w", err)

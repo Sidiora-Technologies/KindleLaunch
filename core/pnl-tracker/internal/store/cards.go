@@ -34,7 +34,7 @@ func (s *Store) InsertCard(ctx context.Context, c CardRow) error {
 	if err != nil {
 		return fmt.Errorf("store: begin card tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback(ctx) }() //nolint:errcheck // no-op after commit; rollback is best-effort cleanup
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO pnl.pnl_cards (card_id, short_code, owner_address, pool_address, token_address, snapshot, created_at)

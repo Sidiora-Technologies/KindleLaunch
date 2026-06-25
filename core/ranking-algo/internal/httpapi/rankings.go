@@ -93,7 +93,10 @@ func rankingByCategory(rdb *goredis.Client) http.HandlerFunc {
 
 		items := make([]map[string]any, 0, len(entries))
 		for i, z := range entries {
-			addr, _ := z.Member.(string)
+			addr, ok := z.Member.(string)
+			if !ok {
+				continue
+			}
 			items = append(items, map[string]any{
 				"poolAddress": addr,
 				"score":       z.Score,
@@ -130,7 +133,11 @@ func enrichWithStats(ctx context.Context, rdb *goredis.Client, items []map[strin
 	}
 	keys := make([]string, len(items))
 	for i, item := range items {
-		keys[i] = "stats:" + item["poolAddress"].(string)
+		addr, ok := item["poolAddress"].(string)
+		if !ok {
+			continue
+		}
+		keys[i] = "stats:" + addr
 	}
 	cached, err := rdb.MGet(ctx, keys...).Result()
 	if err != nil {

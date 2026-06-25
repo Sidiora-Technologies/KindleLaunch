@@ -77,7 +77,9 @@ func (r *Reconciler) RunOnce(ctx context.Context) (int, error) {
 			// Advance over what we've durably folded so far before returning, so a
 			// single poison row doesn't wedge the cursor on every restart.
 			if processed > 0 {
-				_ = r.store.AdvanceCursor(ctx, last.BlockNumber, last.LogIndex, last.ID, shareddb.NowSeconds())
+				if cerr := r.store.AdvanceCursor(ctx, last.BlockNumber, last.LogIndex, last.ID, shareddb.NowSeconds()); cerr != nil {
+					r.logger.Warn("reconcile: advance cursor on poison-row path failed", slog.Any("err", cerr))
+				}
 			}
 			return processed, fmt.Errorf("reconcile: fold swap %s: %w", sw.ID, ferr)
 		}

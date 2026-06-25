@@ -78,6 +78,6 @@ func cachedJSON(w http.ResponseWriter, r *http.Request, rdb *goredis.Client, key
 		sharedhttp.WriteJSON(w, http.StatusOK, val)
 		return
 	}
-	_ = rdb.Set(ctx, key, payload, ttl).Err()
+	rdb.Set(ctx, key, payload, ttl)
 	sharedhttp.WriteJSON(w, http.StatusOK, json.RawMessage(payload))
 }

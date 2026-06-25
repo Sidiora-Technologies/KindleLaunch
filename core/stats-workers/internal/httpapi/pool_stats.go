@@ -53,7 +53,7 @@ func statsByPool(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 		}
 
 		if payload, err := json.Marshal(row); err == nil {
-			_ = rdb.Set(ctx, cacheKey(poolAddress), payload, statsCacheTTL).Err()
+			rdb.Set(ctx, cacheKey(poolAddress), payload, statsCacheTTL)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, row)
 	}
@@ -76,7 +76,7 @@ func statsBatch(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 		for i, addr := range addresses {
 			cmds[i] = pipe.Get(ctx, cacheKey(addr))
 		}
-		_, _ = pipe.Exec(ctx) // redis.Nil for misses is expected; handled per-cmd
+		_, _ = pipe.Exec(ctx) //nolint:errcheck // redis.Nil for misses is expected; handled per-cmd
 
 		for i, addr := range addresses {
 			if val, err := cmds[i].Result(); err == nil && val != "" {
@@ -95,7 +95,7 @@ func statsBatch(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 			for _, row := range rows {
 				if payload, err := json.Marshal(row); err == nil {
 					result[row.PoolAddress] = json.RawMessage(payload)
-					_ = rdb.Set(ctx, cacheKey(row.PoolAddress), payload, statsCacheTTL).Err()
+					rdb.Set(ctx, cacheKey(row.PoolAddress), payload, statsCacheTTL)
 				}
 			}
 		}

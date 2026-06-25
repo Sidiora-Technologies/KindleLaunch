@@ -142,7 +142,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if readErr != nil {
+			errBody = []byte("(unreadable error body)")
+		}
 		if c.logger != nil {
 			c.logger.Error("livepeer API error",
 				slog.Int("status", resp.StatusCode),

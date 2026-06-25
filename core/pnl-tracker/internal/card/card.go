@@ -23,9 +23,9 @@ import (
 // ErrNoPosition is returned when a mint is attempted for a pair that never traded.
 var ErrNoPosition = errors.New("card: no position for owner/pool")
 
-// CardPosition is the numeric subset of a position embedded in a snapshot
+// Position is the numeric subset of a position embedded in a snapshot
 // (pnl.ts: Omit<UserPosition,'userAddress'|'poolAddress'|'tokenAddress'>).
-type CardPosition struct {
+type Position struct {
 	TotalUsdlSpent    string `json:"totalUsdlSpent"`
 	TotalTokensBought string `json:"totalTokensBought"`
 	TotalUsdlReceived string `json:"totalUsdlReceived"`
@@ -47,15 +47,15 @@ type Market struct {
 
 // Snapshot is the immutable card payload (pnl.ts CardSnapshot).
 type Snapshot struct {
-	Version      int          `json:"version"`
-	OwnerAddress string       `json:"ownerAddress"`
-	PoolAddress  string       `json:"poolAddress"`
-	TokenAddress string       `json:"tokenAddress"`
-	TokenSymbol  string       `json:"tokenSymbol,omitempty"`
-	TokenName    string       `json:"tokenName,omitempty"`
-	Position     CardPosition `json:"position"`
-	Market       Market       `json:"market"`
-	CapturedAt   int64        `json:"capturedAt"`
+	Version      int      `json:"version"`
+	OwnerAddress string   `json:"ownerAddress"`
+	PoolAddress  string   `json:"poolAddress"`
+	TokenAddress string   `json:"tokenAddress"`
+	TokenSymbol  string   `json:"tokenSymbol,omitempty"`
+	TokenName    string   `json:"tokenName,omitempty"`
+	Position     Position `json:"position"`
+	Market       Market   `json:"market"`
+	CapturedAt   int64    `json:"capturedAt"`
 }
 
 // Minted is the mint/hydrate response (pnl.ts MintedCard).
@@ -114,7 +114,7 @@ func (s *Service) Mint(ctx context.Context, owner, pool string) (*Minted, error)
 		OwnerAddress: pos.UserAddress,
 		PoolAddress:  pos.PoolAddress,
 		TokenAddress: pos.TokenAddress,
-		Position: CardPosition{
+		Position: Position{
 			TotalUsdlSpent:    pos.TotalUsdlSpent,
 			TotalTokensBought: pos.TotalTokensBought,
 			TotalUsdlReceived: pos.TotalUsdlReceived,
@@ -284,13 +284,16 @@ func titleFor(snap Snapshot) string {
 }
 
 // formatMultiple renders (received + unrealized) / spent as "N.NNx".
-func formatMultiple(p CardPosition, priceWad string) string {
+func formatMultiple(p Position, priceWad string) string {
 	spent, ok := new(big.Int).SetString(orZero(p.TotalUsdlSpent), 10)
 	if !ok || spent.Sign() == 0 {
 		return "0.00x"
 	}
 	received, _ := new(big.Int).SetString(orZero(p.TotalUsdlReceived), 10)
-	unrealizedStr, _ := pnlmath.HoldingValue(priceWad, p.CurrentHoldings)
+	unrealizedStr, err := pnlmath.HoldingValue(priceWad, p.CurrentHoldings)
+	if err != nil {
+		unrealizedStr = "0"
+	}
 	unrealized, _ := new(big.Int).SetString(orZero(unrealizedStr), 10)
 
 	// milli = (received + unrealized) * 1000 / spent.

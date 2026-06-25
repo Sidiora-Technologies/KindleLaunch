@@ -259,18 +259,17 @@ func (s *Store) ListHoldersByBalance(ctx context.Context, poolAddress string) ([
 }
 
 // GetHolderBalance returns a single holder's balance, or ("", false) if absent.
-func (s *Store) GetHolderBalance(ctx context.Context, poolAddress, holderAddress string) (string, bool, error) {
-	var bal string
-	err := s.pool.QueryRow(ctx, `
+func (s *Store) GetHolderBalance(ctx context.Context, poolAddress, holderAddress string) (balance string, found bool, err error) {
+	err = s.pool.QueryRow(ctx, `
 		SELECT balance FROM stats.pool_holders
-		WHERE pool_address = $1 AND holder_address = $2 LIMIT 1`, poolAddress, holderAddress).Scan(&bal)
+		WHERE pool_address = $1 AND holder_address = $2 LIMIT 1`, poolAddress, holderAddress).Scan(&balance)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, fmt.Errorf("store: get holder balance: %w", err)
 	}
-	return bal, true, nil
+	return balance, true, nil
 }
 
 func scanHolders(rows pgx.Rows) ([]HolderRow, error) {

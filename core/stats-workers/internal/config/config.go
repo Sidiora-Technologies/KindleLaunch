@@ -38,7 +38,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
-	if err := cfg.BaseEnv.Validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	if len(cfg.WebhookHMACSecret) < 32 {

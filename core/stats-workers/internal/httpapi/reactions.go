@@ -100,7 +100,7 @@ func reactionsGet(rdb *goredis.Client) http.HandlerFunc {
 		}
 		result := map[string]any{"poolAddress": pool, "reactions": counts, "total": counts.total()}
 		if payload, err := json.Marshal(result); err == nil {
-			_ = rdb.Set(ctx, cacheKey, payload, reactionsCacheTTL).Err()
+			rdb.Set(ctx, cacheKey, payload, reactionsCacheTTL)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, result)
 	}
@@ -152,26 +152,29 @@ func reactionsPost(rdb *goredis.Client) http.HandlerFunc {
 			sharedhttp.WriteError(w, http.StatusTooManyRequests, "Too Many Requests", "Too many votes, slow down")
 			return
 		}
-		_ = rdb.Set(ctx, cooldownKey, "1", voteCooldown).Err()
+		rdb.Set(ctx, cooldownKey, "1", voteCooldown)
 
 		setKey := "reactions:" + pool + ":" + reaction
 		userVoteKey := "reactions:uservote:" + pool + ":" + wallet
-		existingVote, _ := rdb.Get(ctx, userVoteKey).Result()
+		existingVote, getErr := rdb.Get(ctx, userVoteKey).Result()
+		if getErr != nil {
+			existingVote = ""
+		}
 
 		if existingVote == reaction {
 			// Toggle off.
-			_ = rdb.SRem(ctx, setKey, wallet).Err()
-			_ = rdb.Del(ctx, userVoteKey).Err()
+			rdb.SRem(ctx, setKey, wallet)
+			rdb.Del(ctx, userVoteKey)
 		} else {
 			if existingVote != "" && isValidReaction(existingVote) {
-				_ = rdb.SRem(ctx, "reactions:"+pool+":"+existingVote, wallet).Err()
+				rdb.SRem(ctx, "reactions:"+pool+":"+existingVote, wallet)
 			}
-			_ = rdb.SAdd(ctx, setKey, wallet).Err()
-			_ = rdb.Set(ctx, userVoteKey, reaction, 0).Err()
+			rdb.SAdd(ctx, setKey, wallet)
+			rdb.Set(ctx, userVoteKey, reaction, 0)
 		}
 
 		// Invalidate aggregate cache.
-		_ = rdb.Del(ctx, "reactions:"+pool).Err()
+		rdb.Del(ctx, "reactions:"+pool)
 
 		counts, err := countReactions(ctx, rdb, pool)
 		if err != nil {

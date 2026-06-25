@@ -67,7 +67,7 @@ func (h *HolderTracker) ProcessSwap(ctx context.Context, sw HolderSwap) error {
 	if !applied {
 		return nil
 	}
-	h.debouncedRefresh(sw.PoolAddress)
+	h.debouncedRefresh(sw.PoolAddress) //nolint:contextcheck // refresh is debounced and fires after the request returns, so it intentionally uses a background context
 	return nil
 }
 

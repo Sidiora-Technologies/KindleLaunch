@@ -103,7 +103,7 @@ func TestBuildRenderInputFormatting(t *testing.T) {
 		TokenName:    "Dogecoin",
 		TokenSymbol:  "DOGE",
 		TokenAddress: "0xtoken",
-		Position: card.CardPosition{
+		Position: card.Position{
 			TotalUsdlSpent:    "4000000",
 			TotalUsdlReceived: "5000000",
 			AvgCostBasis:      "2000000",
@@ -132,7 +132,7 @@ func TestBuildRenderInputFormatting(t *testing.T) {
 func TestBuildRenderInputLossNoMarket(t *testing.T) {
 	snap := card.Snapshot{
 		TokenSymbol: "LOSS",
-		Position: card.CardPosition{
+		Position: card.Position{
 			TotalUsdlSpent:  "10000000",
 			AvgCostBasis:    "10000000",
 			CurrentHoldings: "0",

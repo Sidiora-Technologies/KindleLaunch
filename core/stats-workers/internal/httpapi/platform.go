@@ -41,7 +41,7 @@ func platformMetrics(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 			return
 		}
 		if payload, err := json.Marshal(m); err == nil {
-			_ = rdb.Set(ctx, platformCacheKey, payload, platformCacheTTL).Err()
+			rdb.Set(ctx, platformCacheKey, payload, platformCacheTTL)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, m)
 	}

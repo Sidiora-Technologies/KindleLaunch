@@ -63,7 +63,7 @@ func TestRunAllProducesRankings(t *testing.T) {
 	}
 
 	// top_volume must be ordered by 24h volume descending.
-	tv, err := rdb.ZRevRange(ctx, "ranking:top_volume", 0, -1).Result()
+	tv, err := rdb.ZRangeArgs(ctx, goredis.ZRangeArgs{Key: "ranking:top_volume", Start: 0, Stop: -1, Rev: true}).Result()
 	if err != nil {
 		t.Fatalf("zrevrange top_volume: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestRunNewOrdersByCreatedAt(t *testing.T) {
 		t.Fatalf("RunNew: %v", err)
 	}
 
-	got, err := rdb.ZRevRange(ctx, "ranking:new", 0, -1).Result()
+	got, err := rdb.ZRangeArgs(ctx, goredis.ZRangeArgs{Key: "ranking:new", Start: 0, Stop: -1, Rev: true}).Result()
 	if err != nil {
 		t.Fatalf("zrevrange new: %v", err)
 	}

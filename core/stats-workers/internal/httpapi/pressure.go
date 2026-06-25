@@ -93,7 +93,7 @@ func pressure(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 		}
 
 		if payload, err := json.Marshal(result); err == nil {
-			_ = rdb.Set(ctx, cacheKey, payload, pressureCacheTTL).Err()
+			rdb.Set(ctx, cacheKey, payload, pressureCacheTTL)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, result)
 	}
