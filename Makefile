@@ -23,9 +23,7 @@ MODULES := \
 	core/trading-charts \
 	media/gateway \
 	media/livestream \
-	media/metadata \
-	media/social \
-	media/user
+
 
 # Money / correctness-critical modules: 90% coverage gate (others 85%).
 MONEY_MODULES := shared protocol core/indexer core/pnl-tracker core/trading-charts

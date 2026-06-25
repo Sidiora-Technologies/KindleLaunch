@@ -6,11 +6,6 @@ module github.com/Sidiora-Technologies/KindleLaunch/media/gateway
 
 go 1.25.0
 
-require (
-	github.com/Sidiora-Technologies/KindleLaunch/protocol v0.0.0
-	github.com/Sidiora-Technologies/KindleLaunch/shared v0.0.0
-)
-
 replace github.com/Sidiora-Technologies/KindleLaunch/shared => ../../shared
 
 replace github.com/Sidiora-Technologies/KindleLaunch/protocol => ../../protocol
