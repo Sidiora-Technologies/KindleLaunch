@@ -1,0 +1,23 @@
+# Keep the build context for deploy/Dockerfile.svc lean.
+# It does `COPY . .` then builds ONE Go leaf module, so the only things needed
+# are the Go workspace (go.work*), shared/, protocol/, and the core/* + media/*
+# modules. Everything excluded here is never imported by a Go service.
+
+.git
+.github
+.devcontainer
+.vscode
+
+# Solidity / Hardhat workspace — not part of any Go build.
+contracts
+
+# Docs, research, licenses, frozen specs — not needed at build time.
+research
+licenses
+knowledge
+**/docs
+**/*.md
+
+# Local build / coverage artifacts.
+.cover
+**/*.out

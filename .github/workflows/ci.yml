@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
+# Default to read-only; the image-publish job widens this to packages:write.
 permissions:
   contents: read
 
@@ -67,3 +67,95 @@ jobs:
 
       - name: coverage gate
         run: make cover-check
+
+  contracts:
+    name: contracts / hardhat tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: contracts/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile contracts
+        run: pnpm compile
+
+      - name: Run tests
+        run: pnpm test
+
+  images:
+    name: image / ${{ matrix.service }}
+    needs: verify
+    runs-on: ubuntu-latest
+    # Only the image job needs to write packages to GHCR.
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: core/api,            bin: apid,     image: kindlelaunch-core-api }
+          - { service: core/indexer,        bin: indexerd, image: kindlelaunch-core-indexer }
+          - { service: core/pnl-tracker,    bin: pnld,     image: kindlelaunch-core-pnl-tracker }
+          - { service: core/ranking-algo,   bin: rankingd, image: kindlelaunch-core-ranking-algo }
+          - { service: core/stats-workers,  bin: statsd,   image: kindlelaunch-core-stats-workers }
+          - { service: core/trading-charts, bin: chartsd,  image: kindlelaunch-core-trading-charts }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Push only on real pushes; PRs from forks get a read-only token, so we
+      # build (to validate the Dockerfile) but skip login + push there.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # metadata-action lowercases the owner automatically for GHCR.
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=sha,format=short
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.svc
+          build-args: |
+            SERVICE=${{ matrix.service }}
+            BIN=${{ matrix.bin }}
+            GO_VERSION=${{ env.GO_VERSION }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          provenance: false
