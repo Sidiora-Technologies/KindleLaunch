@@ -66,7 +66,7 @@ type wsHub struct {
 }
 
 // RegisterWS registers the /ws WebSocket endpoint for real-time candle updates.
-func RegisterWS(r chi.Router, deps WSDeps) {
+func RegisterWS(ctx context.Context, r chi.Router, deps WSDeps) {
 	hub := &wsHub{
 		clients:           make(map[*clientSub]struct{}),
 		subscriptionIndex: make(map[string]map[*clientSub]struct{}),
@@ -84,7 +84,7 @@ func RegisterWS(r chi.Router, deps WSDeps) {
 	}
 
 	// Redis subscriber for candle updates (dedicated connection).
-	go hub.runRedisSubscriber(deps.RedisURL)
+	go hub.runRedisSubscriber(ctx, deps.RedisURL)
 
 	r.Get("/ws", hub.handleWS)
 }
@@ -122,11 +122,10 @@ func (h *wsHub) removeFromIndex(c *clientSub) {
 	}
 }
 
-func (h *wsHub) runRedisSubscriber(redisURL string) {
+func (h *wsHub) runRedisSubscriber(ctx context.Context, redisURL string) {
 	rdb := goredis.NewClient(parseRedisOpts(redisURL))
 	defer rdb.Close()
 
-	ctx := context.Background()
 	ps := rdb.Subscribe(ctx, constants.ChannelCandleUpdate)
 	defer ps.Close()
 

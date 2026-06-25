@@ -85,7 +85,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		Logger:  logger,
 		Secret:  cfg.WebhookHMACSecret,
 	})
-	httpapi.RegisterWS(router, httpapi.WSDeps{
+	httpapi.RegisterWS(ctx, router, httpapi.WSDeps{
 		RedisURL:       cfg.RedisURL,
 		Logger:         logger,
 		MaxConnections: cfg.WSMaxConnections,

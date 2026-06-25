@@ -99,7 +99,7 @@ func (b *Builder) ProcessSwap(ctx context.Context, swap SwapEvent) error {
 	if err != nil {
 		return fmt.Errorf("engine: begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }() //nolint:errcheck // no-op after commit; rollback is best-effort cleanup
 
 	for _, tf := range constants.TimeframeKeys {
 		if err := b.upsertCandleInTx(ctx, tx, swap.PoolAddress, tf, swap.BlockTimestamp, swap.Price,

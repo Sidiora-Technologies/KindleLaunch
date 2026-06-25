@@ -134,11 +134,16 @@ func asInt64(v interface{}) int64 {
 	case float64:
 		return int64(val)
 	case json.Number:
-		n, _ := val.Int64()
+		n, err := val.Int64()
+		if err != nil {
+			return 0
+		}
 		return n
 	case string:
 		var n int64
-		fmt.Sscanf(val, "%d", &n)
+		if _, err := fmt.Sscanf(val, "%d", &n); err != nil {
+			return 0
+		}
 		return n
 	default:
 		return 0

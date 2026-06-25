@@ -109,7 +109,7 @@ func TestKeysAndParseFloat(t *testing.T) {
 func wsServer(t *testing.T, deps WSDeps) (*httptest.Server, string) {
 	t.Helper()
 	r := chi.NewRouter()
-	RegisterWS(r, deps)
+	RegisterWS(context.Background(), r, deps)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
@@ -118,7 +118,10 @@ func wsServer(t *testing.T, deps WSDeps) (*httptest.Server, string) {
 
 func dial(t *testing.T, wsURL string) *websocket.Conn {
 	t.Helper()
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatalf("dial %s: %v", wsURL, err)
 	}

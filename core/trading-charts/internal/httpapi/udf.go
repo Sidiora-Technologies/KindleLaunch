@@ -92,7 +92,10 @@ func udfHistory(st *store.Store) http.HandlerFunc {
 			if err != nil || limit <= 0 {
 				limit = 300
 			}
-			toTs, _ := strconv.ParseInt(toStr, 10, 64)
+			toTs, err := strconv.ParseInt(toStr, 10, 64)
+			if err != nil {
+				toTs = time.Now().Unix()
+			}
 
 			rows, err := st.HistoryCountback(r.Context(), symbol, timeframe, toTs, limit)
 			if err != nil {
@@ -103,8 +106,14 @@ func udfHistory(st *store.Store) http.HandlerFunc {
 			return
 		}
 
-		fromTs, _ := strconv.ParseInt(fromStr, 10, 64)
-		toTs, _ := strconv.ParseInt(toStr, 10, 64)
+		fromTs, err := strconv.ParseInt(fromStr, 10, 64)
+		if err != nil {
+			fromTs = 0
+		}
+		toTs, err := strconv.ParseInt(toStr, 10, 64)
+		if err != nil {
+			toTs = time.Now().Unix()
+		}
 
 		rows, err := st.HistoryRange(r.Context(), symbol, timeframe, fromTs, toTs)
 		if err != nil {
@@ -114,6 +123,11 @@ func udfHistory(st *store.Store) http.HandlerFunc {
 		writeHistoryResponse(w, rows)
 	}
 }
+
+// floatOrZero adapts a (float64, error) formatter result to a plain float64,
+// treating a formatting error as zero: chart history is best-effort and a single
+// malformed row must not fail the whole response.
+func floatOrZero(f float64, _ error) float64 { return f }
 
 func writeHistoryResponse(w http.ResponseWriter, rows []store.CandleRow) {
 	if len(rows) == 0 {
@@ -130,11 +144,11 @@ func writeHistoryResponse(w http.ResponseWriter, rows []store.CandleRow) {
 
 	for i, row := range rows {
 		t[i] = row.CandleStart
-		o[i], _ = parseFloatFormatted(row.Open)
-		h[i], _ = parseFloatFormatted(row.High)
-		l[i], _ = parseFloatFormatted(row.Low)
-		c[i], _ = parseFloatFormatted(row.Close)
-		v[i], _ = parseFloatFormattedVolume(row.VolumeUsdl)
+		o[i] = floatOrZero(parseFloatFormatted(row.Open))
+		h[i] = floatOrZero(parseFloatFormatted(row.High))
+		l[i] = floatOrZero(parseFloatFormatted(row.Low))
+		c[i] = floatOrZero(parseFloatFormatted(row.Close))
+		v[i] = floatOrZero(parseFloatFormattedVolume(row.VolumeUsdl))
 	}
 
 	sharedhttp.WriteJSON(w, 200, map[string]interface{}{
