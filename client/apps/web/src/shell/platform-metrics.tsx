@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { reportError } from '@/core/report-error';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -32,7 +32,7 @@ export function PlatformMetricsCompact({ expanded }: { expanded: boolean }) {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/platform`);
+        const res = await fetch(dataApiUrl('/platform/metrics'));
         if (!res.ok) return;
         const d = await res.json();
         if (!cancelled) setData(d);
@@ -104,7 +104,7 @@ export function PlatformMetricsMobile() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/platform`);
+        const res = await fetch(dataApiUrl('/platform/metrics'));
         if (!res.ok) return;
         const d = await res.json();
         if (!cancelled) setData(d);

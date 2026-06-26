@@ -24,6 +24,7 @@ MODULES := \
 	media/gateway \
 	media/livestream \
 	media/metadata \
+	media/social \
 	media/user \
 
 

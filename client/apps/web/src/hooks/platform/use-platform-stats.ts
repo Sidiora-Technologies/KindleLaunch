@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { queryKeys } from '@/core/query-keys';
 
 export interface PlatformStats {
@@ -17,7 +17,7 @@ export function usePlatformStats(opts?: { refetchInterval?: number }) {
   return useQuery<PlatformStats | null>({
     queryKey: queryKeys.platformStats(),
     queryFn: async () => {
-      const res = await fetch(`${sdkBaseUrls.stats}/stats/platform`);
+      const res = await fetch(dataApiUrl('/platform/metrics'));
       if (!res.ok) return null;
       return res.json();
     },

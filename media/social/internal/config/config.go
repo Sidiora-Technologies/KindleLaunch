@@ -39,8 +39,8 @@ type Config struct {
 	// Realtime hub bounds (i11 backpressure). WSSendBuffer is the per-connection
 	// outbound queue depth; a client that can't keep up past it is evicted rather
 	// than allowed to grow memory without bound.
-	WSSendBuffer       int `env:"WS_SEND_BUFFER" envDefault:"64"`
-	WSWriteTimeoutSecs int `env:"WS_WRITE_TIMEOUT_SECONDS" envDefault:"10"`
+	WSSendBuffer       int   `env:"WS_SEND_BUFFER" envDefault:"64"`
+	WSWriteTimeoutSecs int   `env:"WS_WRITE_TIMEOUT_SECONDS" envDefault:"10"`
 	WSReadLimitBytes   int64 `env:"WS_READ_LIMIT_BYTES" envDefault:"4096"`
 
 	// ChatAdminAPIKey gates the /admin/* moderation routes. Empty => admin API

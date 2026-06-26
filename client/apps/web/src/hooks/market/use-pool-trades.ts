@@ -1,9 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { sdkBaseUrls } from '@/core/sdk-config';
-import { queryKeys } from '@/core/query-keys';
-import { reportError } from '@/core/report-error';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { usePoolEvents } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
+import type { WsStatus } from '@/core/realtime/ws-manager';
 
 export interface PoolTrade {
   id: string;
@@ -19,37 +19,81 @@ export interface PoolTrade {
 
 type TradeFilter = 'all' | 'buy' | 'sell';
 
-async function fetchPoolTrades(
-  poolAddress: string,
-  filter: TradeFilter,
-  limit: number = 50,
-): Promise<PoolTrade[]> {
-  const res = await fetch(
-    `${sdkBaseUrls.stats}/stats/${poolAddress}/transactions?limit=${limit}&type=${filter}`,
-  );
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.transactions ?? [];
+const MAX_TRADES = 50;
+
+function str(v: unknown): string {
+  return v === undefined || v === null ? '' : String(v);
 }
 
+/** Map a `swap` stream frame (webhook envelope or flattened) to a PoolTrade. */
+function toTrade(event: DataEvent, poolAddress: string): PoolTrade | null {
+  const env = (event.data ?? {}) as Record<string, unknown>;
+  const args = ((env.args as Record<string, unknown>) ?? env) as Record<string, unknown>;
+
+  const pool = str(args.poolAddress ?? env.poolAddress);
+  if (pool && pool.toLowerCase() !== poolAddress.toLowerCase()) return null;
+
+  const txHash = str(env.txHash ?? args.txHash);
+  const logIndex = str(env.logIndex ?? args.logIndex);
+  const ts = Number(args.timestamp ?? env.blockTimestamp ?? args.blockTimestamp ?? 0);
+
+  return {
+    id: txHash ? `${txHash}-${logIndex}` : `${pool}-${ts}-${Math.random().toString(36).slice(2, 8)}`,
+    sender: str(args.sender),
+    isBuy: Boolean(args.isBuy),
+    amountIn: str(args.amountIn),
+    amountOut: str(args.amountOut),
+    price: str(args.price),
+    fee: str(args.fee),
+    blockTimestamp: ts,
+    txHash: txHash || undefined,
+  };
+}
+
+/**
+ * Live pool trades via the multiplexed data stream (push-first; core/api exposes
+ * no recent-trades REST snapshot). Accumulates the newest `MAX_TRADES` swaps for
+ * the pool. Returns a useQuery-compatible-ish shape (`data` + connection status).
+ */
 export function usePoolTrades(
   poolAddress: string,
   filter: TradeFilter = 'all',
-  opts?: { refetchInterval?: number; enabled?: boolean },
-) {
-  return useQuery<PoolTrade[]>({
-    queryKey: queryKeys.poolTransactions(poolAddress, filter),
-    queryFn: async () => {
-      try {
-        return await fetchPoolTrades(poolAddress, filter);
-      } catch (error) {
-        reportError(error, { area: 'usePoolTrades', action: 'fetch', poolAddress });
-        return [];
-      }
+  opts?: { enabled?: boolean },
+): { data: PoolTrade[]; status: WsStatus; isLoading: boolean } {
+  const [trades, setTrades] = useState<PoolTrade[]>([]);
+  const seen = useRef<Set<string>>(new Set());
+
+  const onSwap = useCallback(
+    (event: DataEvent) => {
+      const t = toTrade(event, poolAddress);
+      if (!t) return;
+      if (t.id && seen.current.has(t.id)) return;
+      if (t.id) seen.current.add(t.id);
+      setTrades((prev) => {
+        const next = [t, ...prev].slice(0, MAX_TRADES);
+        if (seen.current.size > MAX_TRADES * 4) {
+          seen.current = new Set(next.map((x) => x.id));
+        }
+        return next;
+      });
     },
-    enabled: opts?.enabled !== false && !!poolAddress,
-    refetchInterval: opts?.refetchInterval ?? 5_000,
-    refetchIntervalInBackground: false,
-    staleTime: 3_000,
-  });
+    [poolAddress],
+  );
+
+  const status = usePoolEvents(
+    poolAddress,
+    [DataChannels.Swap],
+    onSwap,
+    opts?.enabled !== false,
+  );
+
+  const data = useMemo(
+    () =>
+      trades.filter((t) =>
+        filter === 'all' ? true : filter === 'buy' ? t.isBuy : !t.isBuy,
+      ),
+    [trades, filter],
+  );
+
+  return { data, status, isLoading: status === 'connecting' && trades.length === 0 };
 }

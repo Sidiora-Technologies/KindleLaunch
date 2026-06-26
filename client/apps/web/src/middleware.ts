@@ -9,19 +9,17 @@ import type { NextRequest } from 'next/server';
  * Docker layer cache can silently erase the frame-ancestors directive.
  */
 
-const knownApiOrigins = [
-  process.env.NEXT_PUBLIC_CANDLES_API || 'https://candlemicroservice-production.up.railway.app',
-  process.env.NEXT_PUBLIC_INDEXER_API || 'https://indexer-production-c407.up.railway.app',
-  process.env.NEXT_PUBLIC_METADATA_API || 'https://metadata-production-ae57.up.railway.app',
-  process.env.NEXT_PUBLIC_RANKING_API || 'https://ranking-algomicroservice-production.up.railway.app',
-  process.env.NEXT_PUBLIC_STATS_API || 'https://statsmicroservice-production.up.railway.app',
-  process.env.NEXT_PUBLIC_USERS_API || 'https://users-production-3285.up.railway.app',
-  process.env.NEXT_PUBLIC_CHAT_API || 'https://chat-production-a147.up.railway.app',
-  process.env.NEXT_PUBLIC_LIVESTREAM_API || 'https://livestream-production-346f.up.railway.app',
-  process.env.NEXT_PUBLIC_PNL_API || 'https://pnl-production-4208.up.railway.app',
-].map((url) => {
-  try { return new URL(url).origin; } catch { return url.replace(/\/+$/, ''); }
-});
+// Backend topology (decision 2026-06-26): the browser talks to the two gateways
+// (core/api data + media/gateway) DIRECTLY through same-origin nginx paths
+// (/api, /media, /ws, /stream). `connect-src 'self'` therefore covers REST + SSE,
+// and same-origin WSS is covered by 'self' (with `wss:` retained as a belt-and-
+// braces allowance). The only EXPLICIT cross-origin entries are for SPLIT-HOST
+// deployments where a gateway lives on its own public origin.
+const gatewayOrigins: string[] = [];
+for (const v of [process.env.NEXT_PUBLIC_DATA_ORIGIN, process.env.NEXT_PUBLIC_MEDIA_ORIGIN]) {
+  if (!v) continue;
+  try { gatewayOrigins.push(new URL(v).origin); } catch {}
+}
 
 const rpcOrigins: string[] = [];
 for (const v of [process.env.NEXT_PUBLIC_RPC_URL, process.env.NEXT_PUBLIC_PAXEER_RPC_URL]) {
@@ -44,18 +42,9 @@ const externalDataOrigins = [
   'https://api.paxscan.io',
 ];
 
-// WebSocket services need direct access from the client (can't proxy WS via API routes)
-const wsOrigins = [
-  process.env.NEXT_PUBLIC_CANDLES_API || 'https://candlemicroservice-production.up.railway.app',
-  process.env.NEXT_PUBLIC_CHAT_API || 'https://chat-production-a147.up.railway.app',
-].map((url) => {
-  try { return new URL(url).origin; } catch { return url.replace(/\/+$/, ''); }
-});
-
 const connectSrc = [...new Set([
-  ...knownApiOrigins,
+  ...gatewayOrigins,
   ...rpcOrigins,
-  ...wsOrigins,
   ...externalDataOrigins,
   ...embeddedWalletOrigins,
 ])].join(' ');
