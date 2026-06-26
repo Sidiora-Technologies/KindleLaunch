@@ -78,9 +78,9 @@ export default function SidebarNav() {
         <div className={`flex items-center py-4 ${expanded ? 'px-5 gap-3' : 'px-0 justify-center'}`}>
           <Link href="/" className="flex items-center flex-shrink-0">
             {expanded ? (
-              <Image src="/sidiora_fun_logo_offwhite.png" alt="Sidiora" width={140} height={36} className="h-9 w-auto" />
+              <Image src="/Kindle-Launch-wordmark.png" alt="Kindle Launch" width={140} height={36} className="h-9 w-auto" />
             ) : (
-                <Image src="/sidiora_fun_logo_icon.png" alt="Sidiora" width={40} height={40} className="h-10 w-10" />
+                <Image src="/Kindle-Launch-logo-dark.png" alt="Kindle Launch" width={40} height={40} className="h-9 w-auto" />
             )}
           </Link>
           {expanded && (

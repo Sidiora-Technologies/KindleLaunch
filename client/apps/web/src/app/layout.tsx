@@ -10,12 +10,12 @@ import CookieBanner from '@/ui/shared/cookie-banner';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Sidiora',
-  description: 'Sidiora — Token Launchpad on Paxeer Network',
+  title: 'Kindle',
+  description: 'Kindle — Token Launchpad on Paxeer Network',
   icons: {
-    icon: '/sidiora_fun_logo_icon.png',
-    shortcut: '/sidiora_fun_logo_icon.png',
-    apple: '/sidiora_fun_logo_icon.png',
+    icon: '/Kindle-Launch-logo-dark.png',
+    shortcut: '/Kindle-Launch-logo-dark.png',
+    apple: '/Kindle-Launch-logo-dark.png',
   },
   manifest: '/manifest.json',
   other: {

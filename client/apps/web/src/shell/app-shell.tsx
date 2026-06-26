@@ -56,7 +56,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {/* ── Mobile header ────────────────────────────────────── */}
         <header className="fixed top-0 left-0 right-0 z-40 bg-black-gray/95 backdrop-blur-sm border-b border-dark-gray px-3 py-2 flex sm:hidden items-center gap-2">
           <Link href="/" className="flex items-center flex-shrink-0">
-            <Image src="/sidiora_fun_logo_offwhite.png" alt="Sidiora" width={110} height={28} className="h-7 w-auto" />
+            <Image src="/Kindle-Launch-wordmark.png" alt="Kindle Launch" width={110} height={28} className="h-7 w-auto" />
           </Link>
           <div className="flex-1" />
           <button

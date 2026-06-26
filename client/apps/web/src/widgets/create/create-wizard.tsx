@@ -319,7 +319,7 @@ export default function CreateWizard() {
 
   const isPending = approvePending || createPending || buyPending || deploying;
 
-  const inputClass = 'w-full bg-dark-gray2 border border-dark-gray rounded-lg px-3 py-2 text-size-13 text-white outline-none focus:border-pink-middle transition';
+  const inputClass = 'w-full bg-dark-gray2 border border-dark-gray6 rounded-lg px-3 py-2 text-size-13 text-white outline-none focus:border-green-middle transition';
   const labelClass = 'text-size-11 text-dark-disabled mb-1 block';
 
   return (
@@ -330,8 +330,8 @@ export default function CreateWizard() {
       <div className="flex gap-2 mb-6">
         {STEPS.map((s, i) => (
           <button key={s} onClick={() => i < step && setStep(i)} className="flex-1 text-left">
-            <div className={`h-1 rounded-full transition ${i <= step ? 'bg-pink-middle' : 'bg-dark-gray'}`} />
-            <span className={`text-size-9 mt-1 block ${i === step ? 'text-pink-middle font-manrope-bold' : i < step ? 'text-half-enabled' : 'text-dark-disabled'}`}>
+            <div className={`h-1 rounded-full transition ${i <= step ? 'bg-green-middle' : 'bg-dark-gray6'}`} />
+            <span className={`text-size-9 mt-1 block ${i === step ? 'text-green-middle font-manrope-bold' : i < step ? 'text-half-enabled' : 'text-dark-disabled'}`}>
               {i + 1}. {s}
             </span>
           </button>
@@ -367,8 +367,8 @@ export default function CreateWizard() {
                   onClick={() => update('feeStrategy', fs.value)}
                   className={`flex-1 py-2 rounded-lg text-size-12 font-manrope-bold border transition ${
                     form.feeStrategy === fs.value
-                      ? 'border-pink-middle bg-pink-opacity-1 text-pink-middle'
-                      : 'border-dark-gray text-dark-disabled hover:text-half-enabled'
+                      ? 'border-green-middle bg-green-opacity-1 text-green-middle'
+                      : 'border-dark-gray6 bg-dark-gray2 text-dark-disabled hover:text-half-enabled'
                   }`}
                 >
                   {fs.label}
@@ -393,7 +393,7 @@ export default function CreateWizard() {
               ))}
             </select>
             {form.optical !== zeroAddress && selectedOptical && (
-              <div className="mt-2 rounded-lg border border-dark-gray bg-dark-gray2/60 p-3">
+              <div className="mt-2 rounded-lg bg-black-gray2 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-size-12 font-manrope-bold text-white">{selectedOptical.name}</span>
                   {selectedOptical.riskLevel !== null && (
@@ -426,7 +426,7 @@ export default function CreateWizard() {
           <div>
             <label className={labelClass}>Token Logo (max 2MB, webp/png/svg)</label>
             <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-full bg-dark-gray flex items-center justify-center overflow-hidden flex-shrink-0 border border-dark-gray">
+              <div className="w-20 h-20 rounded-full bg-dark-gray flex items-center justify-center overflow-hidden flex-shrink-0 border border-dark-gray6">
                 {logoPreview ? (
                   <img src={logoPreview} alt="logo" className="w-full h-full object-cover" />
                 ) : (
@@ -442,7 +442,7 @@ export default function CreateWizard() {
 
           <div>
             <label className={labelClass}>Banner Image (max 5MB, webp/png/svg)</label>
-            <div className="border border-dark-gray rounded-lg overflow-hidden">
+            <div className="border border-dark-gray6 rounded-lg overflow-hidden">
               {bannerPreview ? (
                 <img src={bannerPreview} alt="banner" className="w-full h-32 object-cover" />
               ) : (
@@ -455,7 +455,7 @@ export default function CreateWizard() {
             {bannerError && <span className="text-red-middle text-size-10 block mt-1">{bannerError}</span>}
           </div>
 
-          <div className="border border-dark-gray rounded-lg p-3">
+          <div className="bg-black-gray2 rounded-lg p-3">
             <span className="text-size-11 text-dark-disabled mb-2 block">Live Preview</span>
             <div className="flex items-center gap-3 p-2 bg-gradient-black-gray rounded-lg">
               <div className="w-10 h-10 rounded-full bg-dark-gray overflow-hidden flex-shrink-0">
@@ -485,7 +485,7 @@ export default function CreateWizard() {
 
       {step === 3 && (
         <div className="space-y-4">
-          <div className="border border-dark-gray rounded-lg p-4 space-y-3">
+          <div className="bg-black-gray2 rounded-lg p-4 space-y-3">
             <h3 className="text-size-14 font-manrope-bold">Summary</h3>
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-size-12">
               <span className="text-dark-disabled">Name:</span><span>{form.name}</span>
@@ -508,14 +508,14 @@ export default function CreateWizard() {
               <span className="text-dark-disabled">Banner:</span><span>{bannerFile ? bannerFile.name : 'None'}</span>
             </div>
             {form.description && (
-              <div className="border-t border-dark-gray pt-2 mt-2">
+              <div className="border-t border-dark-gray6 pt-2 mt-2">
                 <span className="text-dark-disabled text-size-11">Description:</span>
                 <p className="text-size-12 mt-1">{form.description}</p>
               </div>
             )}
           </div>
 
-          <div className="border border-dark-gray rounded-lg p-4 space-y-3">
+          <div className="bg-black-gray2 rounded-lg p-4 space-y-3">
             <h3 className="text-size-13 font-manrope-bold">First Buy (optional)</h3>
             <p className="text-size-11 text-dark-disabled">
               Bundle a buy with your token creation in a single transaction.
@@ -539,8 +539,8 @@ export default function CreateWizard() {
                   onClick={() => update('firstBuyAmount', amt)}
                   className={`flex-1 py-1 rounded border text-size-10 transition ${
                     form.firstBuyAmount === amt
-                      ? 'border-pink-middle text-pink-middle'
-                      : 'border-dark-gray text-dark-disabled hover:text-half-enabled'
+                      ? 'border-green-middle bg-green-opacity-1 text-green-middle'
+                      : 'border-dark-gray6 bg-dark-gray2 text-dark-disabled hover:text-half-enabled'
                   }`}
                 >
                   {amt} USDL
@@ -549,7 +549,7 @@ export default function CreateWizard() {
             </div>
           </div>
 
-          <div className="border border-dark-gray rounded-lg p-3 bg-dark-gray2/50 space-y-1">
+          <div className="bg-black-gray2 rounded-lg p-3 space-y-1">
             <div className="flex justify-between text-size-11">
               <span className="text-dark-disabled">Creation fee:</span>
               <span className="text-half-enabled">{creationFeeDisplay}</span>
@@ -585,7 +585,7 @@ export default function CreateWizard() {
           <button
             onClick={prev}
             disabled={isPending}
-            className="px-4 py-2.5 rounded-lg border border-dark-gray text-size-12 text-half-enabled hover:bg-dark-gray2 transition disabled:opacity-40"
+            className="px-4 py-2.5 rounded-lg bg-dark-gray2 text-size-12 text-half-enabled hover:bg-dark-gray7 transition disabled:opacity-40"
           >
             Back
           </button>
@@ -594,7 +594,7 @@ export default function CreateWizard() {
           <button
             onClick={next}
             disabled={step === 0 && (!form.name || !form.symbol)}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-pink-opacity-1 border border-pink-middle/40 text-pink-middle text-size-12 font-manrope-bold hover:bg-pink-middle/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 rounded-lg bg-green-middle text-black text-size-13 font-manrope-bold hover:bg-green-middle2 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Continue
           </button>
@@ -602,7 +602,7 @@ export default function CreateWizard() {
           <button
             onClick={handleDeploy}
             disabled={!canDeploy || isPending}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-pink-middle text-black text-size-13 font-manrope-bold hover:bg-pink-middle2 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 rounded-lg bg-green-middle text-black text-size-13 font-manrope-bold hover:bg-green-middle2 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {approvePending ? 'Approving...' : createPending ? 'Creating...' : buyPending ? 'Buying...' : needsApproval ? 'Approve USDL' : hasFirstBuy ? 'Deploy + Buy' : 'Deploy Token'}
           </button>

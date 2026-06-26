@@ -75,6 +75,11 @@
   --color-gradient-dark-gray: #141C26;
   --color-gradient-black-gray: #000000;
   --color-black-gray: #000000;
+  /* Solid card surface. Previously referenced everywhere (`bg-black-gray2`) but
+     never defined, so cards rendered transparent with an invisible #000 border.
+     Defining it gives every card a real, tone-separated surface (no border
+     needed) — the dense flat-card look, in the existing slate palette. */
+  --color-black-gray2: #131A24;
   --color-green-from: #44E8C8;
   --color-green-to: #2BB89E;
   --color-green-border: #44E8C8;

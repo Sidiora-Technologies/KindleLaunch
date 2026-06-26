@@ -20,27 +20,23 @@ function Shimmer({ className, style }: { className?: string; style?: React.CSSPr
 
 export function TokenCardSkeleton() {
   return (
-    <div className="rounded-xl border border-dark-gray bg-black-gray2 p-3 flex flex-col gap-2.5">
-      <div className="flex items-center gap-2.5">
-        <Shimmer className="w-10 h-10 rounded-lg flex-shrink-0" />
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <Shimmer className="h-3 w-24 rounded" />
-          <Shimmer className="h-2 w-16 rounded" />
+    <div className="rounded-xl bg-black-gray2 overflow-hidden flex flex-col">
+      <Shimmer className="aspect-square w-full rounded-none" />
+      <div className="p-2.5 flex flex-col gap-1.5">
+        <Shimmer className="h-3 w-24 rounded" />
+        <div className="flex items-center justify-between">
+          <Shimmer className="h-3 w-16 rounded" />
+          <Shimmer className="h-3 w-10 rounded" />
         </div>
+        <Shimmer className="h-2 w-20 rounded" />
       </div>
-      <div className="flex items-center justify-between">
-        <Shimmer className="h-3 w-20 rounded" />
-        <Shimmer className="h-3 w-14 rounded" />
-      </div>
-      <Shimmer className="h-6 w-full rounded" />
-      <Shimmer className="h-[3px] w-full rounded-full" />
     </div>
   );
 }
 
-export function TokenGridSkeleton({ count = 8 }: { count?: number }) {
+export function TokenGridSkeleton({ count = 12 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 px-4">
       {Array.from({ length: count }).map((_, i) => (
         <TokenCardSkeleton key={i} />
       ))}

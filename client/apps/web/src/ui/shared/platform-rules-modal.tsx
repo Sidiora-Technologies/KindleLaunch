@@ -82,7 +82,11 @@ export default function PlatformRulesModal() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-[520px] rounded-2xl border border-dark-gray6 bg-dark-gray4 p-6 shadow-2xl">
+      <div className="w-full max-w-[520px] max-h-[92vh] overflow-y-auto rounded-2xl border border-dark-gray6 bg-dark-gray4 p-6 shadow-2xl">
+        <div className="-mx-6 -mt-6 mb-5 overflow-hidden rounded-t-2xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Welcome_banner.png" alt="Welcome to Kindle Launch" className="w-full h-auto object-cover" />
+        </div>
         <div className="mb-5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-green-opacity-015 border border-green-middle/20 flex items-center justify-center flex-shrink-0">
             <svg

@@ -34,110 +34,121 @@ export function SearchIdlePanel({ hotCoins, recentViewed, onSelect, onClearRecen
       className="absolute top-full left-0 right-0 mt-1.5 bg-black-gray/95 backdrop-blur-xl border border-dark-gray/60 rounded-xl shadow-2xl shadow-black/40 z-50 overflow-hidden"
       style={{ minWidth: 380 }}
     >
-      {hotCoins.length > 0 && (
-        <div className="px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-size-10 text-dark-disabled font-manrope-bold uppercase tracking-wider">Trending Now</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {hotCoins.slice(0, 5).map((coin, i) => (
-              <motion.button
-                key={coin.poolAddress}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                whileHover={{ scale: 1.03, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() =>
-                  onSelect({
-                    poolAddress: coin.poolAddress,
-                    tokenAddress: coin.tokenAddress,
-                    name: coin.name || '',
-                    symbol: coin.symbol || '',
-                    logo: coin.logo || null,
-                    marketCap: coin.marketCap || '0',
-                  })
-                }
-                className="flex-shrink-0 w-[92px] border border-dark-gray/50 rounded-xl p-2.5 hover:bg-dark-gray2/50 hover:border-dark-gray transition-all text-center group/coin"
-              >
-                <div className="w-8 h-8 mx-auto rounded-full bg-dark-gray overflow-hidden flex items-center justify-center mb-1.5 ring-1 ring-dark-gray/50 group-hover/coin:ring-dark-gray6/50 transition">
-                  {coin.logo ? (
-                    <img src={coin.logo} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-size-8 text-dark-disabled font-manrope-bold">{(coin.symbol || '?').slice(0, 2)}</span>
-                  )}
-                </div>
-                <div className="text-size-10 font-manrope-bold text-white truncate">{coin.symbol || coin.name || '?'}</div>
-                <div className="text-size-9 text-dark-disabled truncate">{coin.name || ''}</div>
-                <div className="text-size-10 font-manrope-bold text-half-enabled mt-0.5">
-                  {formatCurrency(from6dec(coin.marketCap))}
-                </div>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {recentViewed.length > 0 && (
-        <div className="border-t border-dark-gray/40">
-          <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
-            <div className="flex items-center gap-2">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-dark-disabled">
-                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1" />
-                <path d="M6 3.5V6L7.5 7.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-              </svg>
-              <span className="text-size-10 text-dark-disabled font-manrope-bold uppercase tracking-wider">Recent</span>
+      {(hotCoins.length > 0 || recentViewed.length > 0) ? (
+        <>
+          {hotCoins.length > 0 && (
+            <div className="px-4 pt-4 pb-3">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-middle animate-pulse" />
+                <span className="text-size-10 text-dark-disabled font-manrope-bold uppercase tracking-wider">Hot coins</span>
+              </div>
+              <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+                {hotCoins.slice(0, 6).map((coin, i) => (
+                  <motion.button
+                    key={coin.poolAddress}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() =>
+                      onSelect({
+                        poolAddress: coin.poolAddress,
+                        tokenAddress: coin.tokenAddress,
+                        name: coin.name || '',
+                        symbol: coin.symbol || '',
+                        logo: coin.logo || null,
+                        marketCap: coin.marketCap || '0',
+                      })
+                    }
+                    className="flex-shrink-0 w-[150px] rounded-xl bg-black-gray2 p-3 hover:bg-dark-gray7 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <div className="w-8 h-8 rounded-full bg-dark-gray overflow-hidden flex items-center justify-center flex-shrink-0">
+                        {coin.logo ? (
+                          <img src={coin.logo} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-size-9 text-dark-disabled font-manrope-bold">{(coin.symbol || '?').slice(0, 2)}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-size-12 font-manrope-bold text-white truncate leading-tight">{coin.symbol || coin.name || '?'}</div>
+                        <div className="text-size-10 text-dark-disabled truncate leading-tight">{coin.name || ''}</div>
+                      </div>
+                    </div>
+                    <div className="text-size-15 font-manrope-extra-bold text-white">
+                      {formatCurrency(from6dec(coin.marketCap))}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
             </div>
-            <button
-              onClick={onClearRecent}
-              className="text-size-10 text-dark-disabled hover:text-half-enabled transition px-1.5 py-0.5 rounded hover:bg-dark-gray2/50"
-            >
-              Clear all
-            </button>
-          </div>
-          {recentViewed.map((item, i) => (
-            <motion.button
-              key={item.address}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.03 }}
-              onClick={() =>
-                onSelect({
-                  poolAddress: item.address,
-                  tokenAddress: undefined,
-                  name: item.name,
-                  symbol: item.symbol,
-                  logo: item.logo,
-                  marketCap: item.marketCap,
-                })
-              }
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-dark-gray2/40 transition text-left group/recent"
-            >
-              <div className="w-7 h-7 rounded-full bg-dark-gray overflow-hidden flex-shrink-0 flex items-center justify-center ring-1 ring-dark-gray/50">
-                {item.logo ? (
-                  <img src={item.logo} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-size-9 text-dark-disabled font-manrope-bold">{item.symbol.slice(0, 2)}</span>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-size-12 font-manrope-bold text-white truncate group-hover/recent:text-emerald-300 transition">{item.name}</span>
-                  <span className="text-size-10 text-dark-disabled">{item.symbol}</span>
-                </div>
-                <span className="text-size-9 text-dark-disabled">{formatAddress(item.address, 4)}</span>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className="text-size-11 font-manrope-bold text-white">{formatCurrency(from6dec(item.marketCap))}</div>
-                <div className="text-size-9 text-dark-disabled">{relAge(item.ts)}</div>
-              </div>
-            </motion.button>
-          ))}
-        </div>
-      )}
+          )}
 
-      {hotCoins.length === 0 && recentViewed.length === 0 && (
+          {/* Recently searched — not tracked yet, mirrors the reference layout */}
+          <div className="border-t border-dark-gray/40 px-4 pt-3 pb-2.5">
+            <span className="text-size-10 text-dark-disabled font-manrope-bold uppercase tracking-wider">Recently searched</span>
+            <div className="text-size-11 text-dark-disabled/70 mt-1.5">No recent searches</div>
+          </div>
+
+          {recentViewed.length > 0 && (
+            <div className="border-t border-dark-gray/40">
+              <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                <span className="text-size-10 text-dark-disabled font-manrope-bold uppercase tracking-wider">Recently viewed</span>
+                <button
+                  onClick={onClearRecent}
+                  className="text-size-10 text-green-middle font-manrope-bold hover:opacity-80 transition"
+                >
+                  Clear
+                </button>
+              </div>
+              {recentViewed.map((item, i) => (
+                <motion.button
+                  key={item.address}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.03 }}
+                  onClick={() =>
+                    onSelect({
+                      poolAddress: item.address,
+                      tokenAddress: undefined,
+                      name: item.name,
+                      symbol: item.symbol,
+                      logo: item.logo,
+                      marketCap: item.marketCap,
+                    })
+                  }
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-dark-gray2/40 transition text-left"
+                >
+                  <div className="w-8 h-8 rounded-full bg-dark-gray overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {item.logo ? (
+                      <img src={item.logo} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-size-9 text-dark-disabled font-manrope-bold">{item.symbol.slice(0, 2)}</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-size-12 font-manrope-bold text-white truncate">{item.symbol || item.name}</span>
+                      <span className="text-size-10 text-dark-disabled truncate">{item.name}</span>
+                    </div>
+                    <span className="text-size-9 text-dark-disabled font-mono">{formatAddress(item.address, 4)}</span>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-size-12 font-manrope-bold text-white">{formatCurrency(from6dec(item.marketCap))}</div>
+                    <div className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-md bg-dark-gray2 text-size-9 text-dark-disabled">
+                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                        <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1" />
+                        <path d="M6 3.5V6L7.5 7.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                      </svg>
+                      {relAge(item.ts)}
+                    </div>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
         <div className="px-4 py-8 text-center">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto mb-2 text-dark-disabled/50">
             <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />

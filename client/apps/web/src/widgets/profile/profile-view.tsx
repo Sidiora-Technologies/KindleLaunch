@@ -126,7 +126,7 @@ function ExpandableBalanceCards({ balances }: { balances: WalletBalanceItem[] })
             key={balance.token.address_hash}
             layout
             onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-            className="rounded-xl border border-dark-gray bg-dark-gray2/40 p-3 cursor-pointer hover:border-dark-gray6/60 transition-colors"
+            className="rounded-xl bg-black-gray2 p-3 cursor-pointer hover:bg-dark-gray7 transition-colors"
             transition={{ type: 'spring', stiffness: 400, damping: 35 }}
           >
             <motion.div layout="position" className="flex items-center justify-between">
@@ -158,7 +158,7 @@ function ExpandableBalanceCards({ balances }: { balances: WalletBalanceItem[] })
                   transition={{ type: 'spring', stiffness: 400, damping: 35 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-3 mt-3 border-t border-dark-gray/50 space-y-1.5">
+                  <div className="pt-3 mt-3 border-t border-dark-gray6 space-y-1.5">
                     <div className="flex justify-between text-size-11">
                       <span className="text-dark-disabled">Address</span>
                       <span className="text-half-enabled font-mono text-size-10">
@@ -570,7 +570,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                 {isConnected && myAddress && myAddress.toLowerCase() !== walletAddress.toLowerCase() && (
                   <Link
                     href={`/chat/${encodeURIComponent(buildDmConversationId(myAddress, walletAddress))}`}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-dark-gray text-size-10 text-half-enabled hover:border-half-enabled transition ml-1"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-dark-gray2 text-size-10 text-half-enabled hover:bg-dark-gray7 transition ml-1"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5C21 16.19 16.97 20 12 20c-1.19 0-2.34-.21-3.39-.59L3 21l1.65-4.46A8.77 8.77 0 0 1 3 11.5C3 6.81 7.03 3 12 3s9 3.81 9 8.5z"/></svg>
                     Message
@@ -599,23 +599,23 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
             </div>
           </div>
 
-          {/* Stats row */}
-          <div className="flex items-center gap-8 mb-6">
-            <div className="text-center">
-              <span className="text-size-16 font-manrope-bold text-white block">0</span>
-              <span className="text-size-11 text-dark-disabled">Followers</span>
+          {/* Stat tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="rounded-xl bg-black-gray2 p-3">
+              <div className="text-size-10 text-dark-disabled uppercase tracking-wider">Followers</div>
+              <div className="text-size-16 font-manrope-bold text-white mt-1">0</div>
             </div>
-            <div className="text-center">
-              <span className="text-size-16 font-manrope-bold text-white block">0</span>
-              <span className="text-size-11 text-dark-disabled">Following</span>
+            <div className="rounded-xl bg-black-gray2 p-3">
+              <div className="text-size-10 text-dark-disabled uppercase tracking-wider">Following</div>
+              <div className="text-size-16 font-manrope-bold text-white mt-1">0</div>
             </div>
-            <div className="text-center">
-              <span className="text-size-16 font-manrope-bold text-white block">{createdCount}</span>
-              <span className="text-size-11 text-dark-disabled">Created coins</span>
+            <div className="rounded-xl bg-black-gray2 p-3">
+              <div className="text-size-10 text-dark-disabled uppercase tracking-wider">Created coins</div>
+              <div className="text-size-16 font-manrope-bold text-white mt-1">{createdCount}</div>
             </div>
-            <div className="text-center">
-              <span className="text-size-16 font-manrope-bold text-white block">{formatCurrency(totalBalancesUsd)}</span>
-              <span className="text-size-11 text-dark-disabled">Balance value</span>
+            <div className="rounded-xl bg-black-gray2 p-3">
+              <div className="text-size-10 text-dark-disabled uppercase tracking-wider">Balance value</div>
+              <div className="text-size-16 font-manrope-bold text-white mt-1">{formatCurrency(totalBalancesUsd)}</div>
             </div>
           </div>
 
@@ -633,7 +633,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
           </PremiumErrorBoundary>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-dark-gray mb-5 overflow-x-auto no-scrollbar">
+          <div className="flex gap-1 border-b border-dark-gray6 mb-5 overflow-x-auto no-scrollbar">
             {(
               ['balances', 'positions', 'coins', 'rewards', ...(isOwnProfile ? (['referrals'] as const) : ([] as const)), 'activity'] as const
             ).map((t) => (
@@ -642,7 +642,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                 onClick={() => setTab(t)}
                 className={`px-4 py-2.5 text-size-13 font-manrope-bold transition border-b-2 -mb-px whitespace-nowrap ${
                   tab === t
-                    ? 'text-white border-white'
+                    ? 'text-white border-green-middle'
                     : 'text-dark-disabled border-transparent hover:text-half-enabled'
                 }`}
               >
@@ -696,7 +696,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
               )}
               {!coinsLoading && createdCoins.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between text-size-11 text-dark-disabled px-2 py-2 border-b border-dark-gray">
+                  <div className="flex items-center justify-between text-size-11 text-dark-disabled px-2 py-2 border-b border-dark-gray6">
                     <span>Coin</span>
                     <span>Market cap</span>
                   </div>
@@ -704,7 +704,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                     <Link
                       key={coin.poolAddress}
                       href={`/token/${coin.poolAddress}`}
-                      className="flex items-center justify-between px-2 py-3 border-b border-dark-gray/50 hover:bg-dark-gray/20 transition"
+                      className="flex items-center justify-between px-2 py-3 border-b border-dark-gray6/60 hover:bg-dark-gray2 transition"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-dark-gray overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -732,21 +732,21 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
               )}
               {!publicRewardsLoading && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Total claimable fees</div>
                     <div className="text-size-14 font-manrope-bold text-green-middle mt-1">
                       {formatCurrency(from6dec(totalClaimableFees.toString()))}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Reward NFTs</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">{totalRewardsPools}</div>
                   </div>
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Pools with fees</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">{rewardsWithFees}</div>
                   </div>
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">24h volume (created)</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">
                       {formatCurrency(totalRewardsVolume24h)}
@@ -761,14 +761,14 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
 
               {!publicRewardsLoading && publicRewards.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between text-size-11 text-dark-disabled px-2 py-2 border-b border-dark-gray">
+                  <div className="flex items-center justify-between text-size-11 text-dark-disabled px-2 py-2 border-b border-dark-gray6">
                     <span>Token</span>
                     <span>Claimable fees</span>
                   </div>
                   {publicRewards.map((item, idx) => (
                     <div
                       key={item.nftId > 0n ? item.nftId.toString() : `public-reward-${idx}`}
-                      className="flex items-center justify-between px-2 py-3 border-b border-dark-gray/50"
+                      className="flex items-center justify-between px-2 py-3 border-b border-dark-gray6/60"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-lg bg-dark-gray overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -814,19 +814,19 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
             <div>
               {addressCounters && (
                 <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Transactions</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">
                       {addressCounters.transactionsCount.toLocaleString()}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Token transfers</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">
                       {addressCounters.tokenTransfersCount.toLocaleString()}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-dark-gray p-3">
+                  <div className="rounded-xl bg-black-gray2 p-3">
                     <div className="text-size-10 text-dark-disabled">Gas used</div>
                     <div className="text-size-14 font-manrope-bold text-white mt-1">
                       {addressCounters.gasUsageCount.toLocaleString()}
@@ -835,7 +835,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                 </div>
               )}
 
-              <div className="flex gap-1 border-b border-dark-gray mb-4">
+              <div className="flex gap-1 border-b border-dark-gray6 mb-4">
                 {(['transactions', 'transfers'] as const).map((st) => (
                   <button
                     key={st}
@@ -862,7 +862,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                   {!explorerTxsLoading && explorerTxs.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-size-11">
-                        <thead className="text-dark-disabled border-b border-dark-gray">
+                        <thead className="text-dark-disabled border-b border-dark-gray6">
                           <tr>
                             <th className="text-left px-2 py-2">Tx Hash</th>
                             <th className="text-left px-2 py-2">Method</th>
@@ -879,7 +879,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                             const valWei = BigInt(tx.value || '0');
                             const valEth = Number(valWei) / 1e18;
                             return (
-                              <tr key={tx.hash} className="border-b border-dark-gray/30 hover:bg-dark-gray2/20 transition">
+                              <tr key={tx.hash} className="border-b border-dark-gray6/50 hover:bg-dark-gray2 transition">
                                 <td className="px-2 py-2">
                                   <a
                                     href={`https://paxscan.paxeer.app/tx/${tx.hash}`}
@@ -930,7 +930,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                   {!explorerTransfersLoading && explorerTransfers.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-size-11">
-                        <thead className="text-dark-disabled border-b border-dark-gray">
+                        <thead className="text-dark-disabled border-b border-dark-gray6">
                           <tr>
                             <th className="text-left px-2 py-2">Tx Hash</th>
                             <th className="text-left px-2 py-2">Token</th>
@@ -948,7 +948,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
                             const rawVal = BigInt(tf.total?.value || '0');
                             const display = Number(rawVal) / Math.pow(10, decimals);
                             return (
-                              <tr key={`${tf.tx_hash}-${idx}`} className="border-b border-dark-gray/30 hover:bg-dark-gray2/20 transition">
+                              <tr key={`${tf.tx_hash}-${idx}`} className="border-b border-dark-gray6/50 hover:bg-dark-gray2 transition">
                                 <td className="px-2 py-2">
                                   <a
                                     href={`https://paxscan.paxeer.app/tx/${tf.tx_hash}`}
@@ -998,7 +998,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
 
         {/* Right sidebar — Created coins summary */}
         <div className="w-full lg:w-72 flex-shrink-0 lg:pt-1">
-          <div className="rounded-xl p-1">
+          <div className="rounded-xl bg-black-gray2 p-3">
             <h3 className="text-size-13 font-manrope-bold text-dark-disabled mb-2">
               Created coins ({createdCount})
             </h3>
@@ -1009,7 +1009,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
               <Link
                 key={coin.poolAddress}
                 href={`/token/${coin.poolAddress}`}
-                className="flex items-center justify-between py-2 hover:bg-dark-gray/20 transition rounded-lg px-1"
+                className="flex items-center justify-between py-2 hover:bg-dark-gray7 transition rounded-lg px-1"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-full bg-dark-gray overflow-hidden flex items-center justify-center flex-shrink-0">

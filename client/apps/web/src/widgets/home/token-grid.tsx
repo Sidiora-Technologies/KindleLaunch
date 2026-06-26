@@ -77,7 +77,7 @@ export default function TokenGrid({ category }: TokenGridProps) {
   return (
     <PremiumErrorBoundary area="token-grid">
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 px-4">
         {items.map((item) => (
           <TokenCard
             key={item.poolAddress}
@@ -96,7 +96,7 @@ export default function TokenGrid({ category }: TokenGridProps) {
           <button
             disabled={page === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="px-3 py-1 rounded-lg border border-dark-gray text-size-11 text-half-enabled disabled:opacity-30 disabled:cursor-not-allowed hover:bg-dark-gray2 transition"
+            className="px-3 py-1 rounded-lg bg-dark-gray2 text-size-11 text-half-enabled disabled:opacity-30 disabled:cursor-not-allowed hover:bg-dark-gray7 transition"
           >
             Prev
           </button>
@@ -106,7 +106,7 @@ export default function TokenGrid({ category }: TokenGridProps) {
           <button
             disabled={!hasMore}
             onClick={() => setPage((p) => p + 1)}
-            className="px-3 py-1 rounded-lg border border-dark-gray text-size-11 text-half-enabled disabled:opacity-30 disabled:cursor-not-allowed hover:bg-dark-gray2 transition"
+            className="px-3 py-1 rounded-lg bg-dark-gray2 text-size-11 text-half-enabled disabled:opacity-30 disabled:cursor-not-allowed hover:bg-dark-gray7 transition"
           >
             Next
           </button>
