@@ -168,6 +168,58 @@ func TestClientAndCacheIntegration(t *testing.T) {
 	}
 }
 
+func TestPublishJSON(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Nil client is a no-op (services without Redis still run).
+	if err := PublishJSON(ctx, nil, "stats:update", []byte(`{}`)); err != nil {
+		t.Fatalf("PublishJSON(nil) = %v, want nil", err)
+	}
+
+	url := newRedisURL(t)
+	sub, err := NewSubscriber(url)
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+	defer sub.Close()
+
+	const channel = "stats:update"
+	received := make(chan string, 1)
+	if _, err := sub.Subscribe(ctx, channel, func(_ context.Context, payload []byte) error {
+		received <- string(payload)
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	rdb, err := NewClient(url)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer rdb.Close()
+
+	// PublishJSON forwards the RAW bytes verbatim (no re-encoding) so a cache
+	// payload is delivered byte-for-byte to subscribers.
+	raw := []byte(`{"poolAddress":"0xabc","price":"100"}`)
+	deadline := time.After(5 * time.Second)
+	for {
+		if err := PublishJSON(ctx, rdb, channel, raw); err != nil {
+			t.Fatalf("PublishJSON: %v", err)
+		}
+		select {
+		case got := <-received:
+			if got != string(raw) {
+				t.Fatalf("payload = %s, want %s", got, raw)
+			}
+			return
+		case <-time.After(150 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("did not receive published message in time")
+		}
+	}
+}
+
 func TestPubSubIntegration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

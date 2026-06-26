@@ -2,11 +2,15 @@ package position_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/pnl-tracker/internal/internaltest"
 	"github.com/Sidiora-Technologies/KindleLaunch/core/pnl-tracker/internal/pnlcache"
@@ -62,6 +66,45 @@ func TestProcessEventFoldsAndResolvesToken(t *testing.T) {
 	// Cache was invalidated.
 	if n, _ := rdb.Exists(ctx, pnlcache.KeyPositions("0xbuyer")).Result(); n != 0 {
 		t.Error("positions cache should be invalidated after a fold")
+	}
+}
+
+// TestProcessEventPublishesPnlUpdate proves a new fold signals pnl:update for the
+// trader so the client refetches the (busted) portfolio ONCE instead of polling.
+func TestProcessEventPublishesPnlUpdate(t *testing.T) {
+	ctx := context.Background()
+	c, _, rdb := setup(t)
+
+	sub := rdb.Subscribe(ctx, constants.ChannelPnlUpdate)
+	if _, err := sub.Receive(ctx); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer sub.Close()
+
+	if err := c.ProcessEvent(ctx, position.SwapEvent{
+		PoolAddress: "0xPool", Sender: "0xBuyer", IsBuy: true,
+		AmountIn: "1000000", AmountOut: "1000000000000000000",
+		Price: "1000000", Fee: "10", BlockNumber: 50, BlockTimestamp: 100, TxHash: "0xtx", LogIndex: 0,
+	}); err != nil {
+		t.Fatalf("process buy: %v", err)
+	}
+
+	var payload []byte
+	select {
+	case msg := <-sub.Channel():
+		payload = []byte(msg.Payload)
+	case <-time.After(3 * time.Second):
+		t.Fatal("expected pnl:update publish")
+	}
+
+	var got struct {
+		UserAddress string `json:"userAddress"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("unmarshal pnl:update: %v", err)
+	}
+	if got.UserAddress != "0xbuyer" {
+		t.Errorf("pnl:update userAddress = %q, want lowercased 0xbuyer", got.UserAddress)
 	}
 }
 

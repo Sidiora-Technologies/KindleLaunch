@@ -39,6 +39,25 @@ func (p *Publisher) Publish(ctx context.Context, channel string, data any) error
 // Close releases the publisher connection.
 func (p *Publisher) Close() error { return p.rdb.Close() }
 
+// PublishJSON publishes pre-marshaled JSON bytes to channel on an EXISTING
+// client. It is the push-first counterpart to a cache write: a worker calls it
+// right after a successful cache SET so subscribers receive the fresh snapshot
+// over the realtime spine instead of polling.
+//
+// It is best-effort and fire-and-forget in spirit — the returned error is for
+// logging only and MUST NOT fail the originating operation (the cache write is
+// the durable source of truth; the publish is just the "this changed" signal).
+// A nil client is a no-op so services without Redis still run.
+func PublishJSON(ctx context.Context, rdb *redis.Client, channel string, payload []byte) error {
+	if rdb == nil {
+		return nil
+	}
+	if err := rdb.Publish(ctx, channel, payload).Err(); err != nil {
+		return fmt.Errorf("redis: publish %q: %w", channel, err)
+	}
+	return nil
+}
+
 // Subscriber consumes JSON messages from Redis channels (parity with TS
 // createSubscriber, which uses a dedicated connection).
 type Subscriber struct {

@@ -30,6 +30,17 @@ var channelType = map[string]string{
 	constants.ChannelOpticalExecuted:    "optical_executed",
 	constants.ChannelConfigUpdated:      "config_updated",
 	constants.ChannelCandleUpdate:       "candle_update",
+	// Derived-state push channels: de-prefixed event names the data-stream
+	// client subscribes to. stats/holders/pressure/reactions route by pool;
+	// platform is global; rankings/pnl are global and the client filters on the
+	// payload's category/userAddress (low volume — no pool-keyed Filter needed).
+	constants.ChannelStatsUpdate:     "stats_update",
+	constants.ChannelHoldersUpdate:   "holders_update",
+	constants.ChannelPressureUpdate:  "pressure_update",
+	constants.ChannelReactionsUpdate: "reactions_update",
+	constants.ChannelPlatformUpdate:  "platform_update",
+	constants.ChannelRankingsUpdate:  "rankings_update",
+	constants.ChannelPnlUpdate:       "pnl_update",
 }
 
 // coalescable lists the channels whose ticks represent the LATEST STATE and may
@@ -40,6 +51,13 @@ var channelType = map[string]string{
 var coalescable = map[string]bool{
 	constants.ChannelCandleUpdate:     true,
 	constants.ChannelPoolStateUpdated: true,
+	// Snapshot channels carry the LATEST recomputed state per key, so under
+	// backpressure only the newest matters (latest-per-pool / latest-global).
+	constants.ChannelStatsUpdate:    true,
+	constants.ChannelPressureUpdate: true,
+	constants.ChannelPlatformUpdate: true,
+	// holders/reactions/rankings/pnl stay must-deliver: each tick reflects a
+	// discrete mutation a user expects to see land, and volume is low.
 }
 
 // routing is the minimal envelope the transform parses out of every payload to

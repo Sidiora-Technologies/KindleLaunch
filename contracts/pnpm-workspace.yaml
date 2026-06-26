@@ -1,3 +1,4 @@
 onlyBuiltDependencies:
+  - cbor-extract
   - keccak
   - secp256k1

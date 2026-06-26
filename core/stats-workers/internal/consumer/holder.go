@@ -2,16 +2,30 @@ package consumer
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	shareddb "github.com/Sidiora-Technologies/KindleLaunch/shared/db"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/stats-workers/internal/store"
 )
+
+// holderSnapshot is the holders:update push payload: the routing key plus the
+// fields a client needs to update the holder panel in place without refetching.
+type holderSnapshot struct {
+	PoolAddress string            `json:"poolAddress"`
+	HolderCount int               `json:"holderCount"`
+	TopHolders  []store.HolderRow `json:"topHolders"`
+}
+
+// topHoldersLimit bounds the top-holder slice carried in a holders:update push.
+const topHoldersLimit = 10
 
 // defaultHolderDebounce bounds holder-stats refresh to at most once per pool per
 // 10s (parity with the TS HOLDER_STATS_DEBOUNCE_MS constant; S-1).
@@ -100,7 +114,40 @@ func (h *HolderTracker) RefreshNow(ctx context.Context, poolAddress string) erro
 	if err := h.store.RefreshPoolHolderStats(ctx, poolAddress, now); err != nil {
 		return err
 	}
-	return h.redis.Del(ctx, cacheKey(poolAddress)).Err()
+	if err := h.redis.Del(ctx, cacheKey(poolAddress)).Err(); err != nil {
+		return err
+	}
+	h.publishHolders(ctx, poolAddress)
+	return nil
+}
+
+// publishHolders pushes the fresh holder snapshot on the holders:update channel
+// so subscribers refresh the holder panel without polling. Best-effort: a read
+// or publish failure is logged but never fails the refresh (the DB row and the
+// invalidated cache remain consistent regardless).
+func (h *HolderTracker) publishHolders(ctx context.Context, poolAddress string) {
+	count, err := h.store.CountHolders(ctx, poolAddress)
+	if err != nil {
+		h.logger.Warn("holders:update count failed", slog.String("pool", poolAddress), slog.Any("err", err))
+		return
+	}
+	top, err := h.store.ListHolders(ctx, poolAddress, topHoldersLimit, 0)
+	if err != nil {
+		h.logger.Warn("holders:update top holders failed", slog.String("pool", poolAddress), slog.Any("err", err))
+		return
+	}
+	payload, err := json.Marshal(holderSnapshot{
+		PoolAddress: poolAddress,
+		HolderCount: count,
+		TopHolders:  top,
+	})
+	if err != nil {
+		h.logger.Warn("holders:update marshal failed", slog.String("pool", poolAddress), slog.Any("err", err))
+		return
+	}
+	if err := sharedredis.PublishJSON(ctx, h.redis, constants.ChannelHoldersUpdate, payload); err != nil {
+		h.logger.Warn("holders:update publish failed", slog.String("pool", poolAddress), slog.Any("err", err))
+	}
 }
 
 // Close stops all pending debounce timers.

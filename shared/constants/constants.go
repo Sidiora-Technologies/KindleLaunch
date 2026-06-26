@@ -19,9 +19,25 @@ const (
 	ChannelOpticalExecuted    = "indexer:optical_executed"
 	ChannelConfigUpdated      = "indexer:config_updated"
 	ChannelCandleUpdate       = "candles:update"
+
+	// Derived-state channels (push-first). Unlike the indexer:* channels — which
+	// carry raw on-chain events — these carry the FRESH SNAPSHOT a worker just
+	// wrote to its Redis cache, published at the cache-write site so the browser
+	// gets a "this changed" signal and never has to poll. Payload is the same
+	// JSON the cache holds plus a routing key (poolAddress / category /
+	// userAddress).
+	ChannelStatsUpdate     = "stats:update"     // pool stats snapshot recomputed
+	ChannelHoldersUpdate   = "holders:update"   // holder set / top holders changed
+	ChannelPressureUpdate  = "pressure:update"  // buy/sell pressure recomputed
+	ChannelReactionsUpdate = "reactions:update" // reaction tally changed
+	ChannelPlatformUpdate  = "platform:update"  // platform metrics precomputed
+	ChannelRankingsUpdate  = "rankings:update"  // a ranking category recomputed
+	ChannelPnlUpdate       = "pnl:update"       // a user's portfolio folded
 )
 
-// Channels is the ordered set of every Redis channel the indexer fans out on.
+// Channels is the ordered set of every Redis channel the core/api broker
+// subscribes to and fans out: the raw indexer:* events, the candle stream, and
+// the derived-state push channels.
 var Channels = []string{
 	ChannelSwap,
 	ChannelMarketCreated,
@@ -32,6 +48,13 @@ var Channels = []string{
 	ChannelOpticalExecuted,
 	ChannelConfigUpdated,
 	ChannelCandleUpdate,
+	ChannelStatsUpdate,
+	ChannelHoldersUpdate,
+	ChannelPressureUpdate,
+	ChannelReactionsUpdate,
+	ChannelPlatformUpdate,
+	ChannelRankingsUpdate,
+	ChannelPnlUpdate,
 }
 
 // Queue names (shared/src/constants/queues.ts QUEUES).

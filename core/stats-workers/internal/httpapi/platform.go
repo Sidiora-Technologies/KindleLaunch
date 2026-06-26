@@ -9,8 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	shareddb "github.com/Sidiora-Technologies/KindleLaunch/shared/db"
 	sharedhttp "github.com/Sidiora-Technologies/KindleLaunch/shared/http"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/stats-workers/internal/store"
 )
@@ -59,5 +61,11 @@ func PrecomputePlatformMetrics(ctx context.Context, st *store.Store, rdb *goredi
 	if err != nil {
 		return err
 	}
-	return rdb.Set(ctx, platformCacheKey, payload, platformCacheTTL).Err()
+	if err := rdb.Set(ctx, platformCacheKey, payload, platformCacheTTL).Err(); err != nil {
+		return err
+	}
+	// Push-first: publish the precomputed platform metrics on platform:update (a
+	// global event) so the metrics widget updates without polling. Best-effort.
+	_ = sharedredis.PublishJSON(ctx, rdb, constants.ChannelPlatformUpdate, payload)
+	return nil
 }

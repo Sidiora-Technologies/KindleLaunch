@@ -15,6 +15,9 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
+
 	"github.com/Sidiora-Technologies/KindleLaunch/core/stats-workers/internal/store"
 )
 
@@ -43,5 +46,10 @@ func cachePoolStats(ctx context.Context, st *store.Store, rdb *goredis.Client, p
 	if err := rdb.Set(ctx, cacheKey(poolAddress), payload, statsCacheTTL).Err(); err != nil {
 		return fmt.Errorf("consumer: cache pool stats: %w", err)
 	}
+	// Push-first: publish the fresh snapshot on the stats:update channel so the
+	// core/api broker fans it out and subscribers update in place — no polling.
+	// The payload already carries poolAddress (broker routes on it). Best-effort:
+	// a publish failure never fails the cache write (the durable source of truth).
+	_ = sharedredis.PublishJSON(ctx, rdb, constants.ChannelStatsUpdate, payload)
 	return nil
 }

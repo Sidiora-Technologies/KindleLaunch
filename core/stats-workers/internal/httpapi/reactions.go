@@ -11,7 +11,9 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/shared/auth"
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	sharedhttp "github.com/Sidiora-Technologies/KindleLaunch/shared/http"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 )
 
 const (
@@ -185,6 +187,18 @@ func reactionsPost(rdb *goredis.Client) http.HandlerFunc {
 		var userVote any
 		if cv, err := rdb.Get(ctx, userVoteKey).Result(); err == nil && cv != "" {
 			userVote = cv
+		}
+
+		// Push-first: publish the fresh aggregate tally on reactions:update so the
+		// core/api broker fans it out and every viewer of this pool updates in
+		// place. userVote is per-wallet so it is intentionally NOT broadcast — only
+		// the shared tally is pushed. Best-effort, never fails the vote.
+		if pushPayload, err := json.Marshal(map[string]any{
+			"poolAddress": pool,
+			"reactions":   counts,
+			"total":       counts.total(),
+		}); err == nil {
+			_ = sharedredis.PublishJSON(ctx, rdb, constants.ChannelReactionsUpdate, pushPayload)
 		}
 
 		sharedhttp.WriteJSON(w, http.StatusOK, map[string]any{

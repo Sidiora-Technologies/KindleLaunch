@@ -14,8 +14,17 @@ func TestChannelValues(t *testing.T) {
 		"OPTICAL_EXECUTED":     ChannelOpticalExecuted,
 		"CONFIG_UPDATED":       ChannelConfigUpdated,
 		"CANDLE_UPDATE":        ChannelCandleUpdate,
+		"STATS_UPDATE":         ChannelStatsUpdate,
+		"HOLDERS_UPDATE":       ChannelHoldersUpdate,
+		"PRESSURE_UPDATE":      ChannelPressureUpdate,
+		"REACTIONS_UPDATE":     ChannelReactionsUpdate,
+		"PLATFORM_UPDATE":      ChannelPlatformUpdate,
+		"RANKINGS_UPDATE":      ChannelRankingsUpdate,
+		"PNL_UPDATE":           ChannelPnlUpdate,
 	}
-	// Exact wire strings (invariant i5 — must match the TS CHANNELS constant).
+	// Exact wire strings: the indexer:* + candles:update names match the TS
+	// CHANNELS constant (invariant i5); the derived-state *:update names are the
+	// push-first channels added Go-side and consumed by the data-stream client.
 	exact := map[string]string{
 		"SWAP":                 "indexer:swap",
 		"MARKET_CREATED":       "indexer:market_created",
@@ -26,6 +35,13 @@ func TestChannelValues(t *testing.T) {
 		"OPTICAL_EXECUTED":     "indexer:optical_executed",
 		"CONFIG_UPDATED":       "indexer:config_updated",
 		"CANDLE_UPDATE":        "candles:update",
+		"STATS_UPDATE":         "stats:update",
+		"HOLDERS_UPDATE":       "holders:update",
+		"PRESSURE_UPDATE":      "pressure:update",
+		"REACTIONS_UPDATE":     "reactions:update",
+		"PLATFORM_UPDATE":      "platform:update",
+		"RANKINGS_UPDATE":      "rankings:update",
+		"PNL_UPDATE":           "pnl:update",
 	}
 	for k, got := range want {
 		if got != exact[k] {

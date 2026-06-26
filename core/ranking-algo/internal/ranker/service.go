@@ -2,16 +2,34 @@ package ranker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 )
+
+// rankingItem is one entry of a rankings:update push payload.
+type rankingItem struct {
+	Address string  `json:"address"`
+	Score   float64 `json:"score"`
+}
+
+// rankingUpdate is the rankings:update push payload. The broker treats this as a
+// global event; the client filters on category and replaces that one list.
+type rankingUpdate struct {
+	Category string        `json:"category"`
+	Items    []rankingItem `json:"items"`
+}
 
 // Redis key + window constants (parity with rankers/helpers.ts and the
 // ranking:<category> key scheme read by routes/rankings.ts).
@@ -231,6 +249,7 @@ func (s *Service) write(ctx context.Context, key string, entries []Scored) error
 		if err := s.rdb.Del(ctx, key).Err(); err != nil {
 			return fmt.Errorf("ranker: del %s: %w", key, err)
 		}
+		s.publishRanking(ctx, key, nil)
 		return nil
 	}
 
@@ -252,5 +271,27 @@ func (s *Service) write(ctx context.Context, key string, entries []Scored) error
 	if s.logger != nil {
 		s.logger.Debug("ranking published", slog.String("key", key), slog.Int("entries", len(entries)))
 	}
+	s.publishRanking(ctx, key, entries)
 	return nil
+}
+
+// publishRanking emits a rankings:update signal carrying the recomputed category
+// and its ordered items so the client replaces that one list without polling.
+// The category is the ranking key minus the "ranking:" prefix. Best-effort: a
+// publish failure never fails the ZSET swap (the ranking is already live).
+func (s *Service) publishRanking(ctx context.Context, key string, entries []Scored) {
+	items := make([]rankingItem, len(entries))
+	for i, e := range entries {
+		items[i] = rankingItem{Address: e.Address, Score: e.Score}
+	}
+	payload, err := json.Marshal(rankingUpdate{
+		Category: strings.TrimPrefix(key, "ranking:"),
+		Items:    items,
+	})
+	if err != nil {
+		return
+	}
+	if err := sharedredis.PublishJSON(ctx, s.rdb, constants.ChannelRankingsUpdate, payload); err != nil && s.logger != nil {
+		s.logger.Warn("rankings:update publish failed", slog.String("key", key), slog.Any("err", err))
+	}
 }

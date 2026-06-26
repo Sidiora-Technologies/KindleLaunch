@@ -353,6 +353,143 @@ func TestResubscribe_SwitchesChannelRouting(t *testing.T) {
 	}
 }
 
+// TestDefaultTransform_DerivedStateChannels verifies the push-first channels
+// expose their de-prefixed event type, route by pool where applicable, and set
+// the coalesce key only for the snapshot (latest-state) channels.
+func TestDefaultTransform_DerivedStateChannels(t *testing.T) {
+	cases := []struct {
+		channel      string
+		payload      []byte
+		wantType     string
+		wantPool     string
+		wantCoalesce string
+	}{
+		{
+			channel:      constants.ChannelStatsUpdate,
+			payload:      []byte(`{"poolAddress":"0xAAA","priceUsdl":"100"}`),
+			wantType:     "stats_update",
+			wantPool:     "0xAAA",
+			wantCoalesce: constants.ChannelStatsUpdate + ":0xAAA",
+		},
+		{
+			channel:      constants.ChannelPressureUpdate,
+			payload:      []byte(`{"poolAddress":"0xBBB","buy":"1","sell":"2"}`),
+			wantType:     "pressure_update",
+			wantPool:     "0xBBB",
+			wantCoalesce: constants.ChannelPressureUpdate + ":0xBBB",
+		},
+		{
+			channel:      constants.ChannelHoldersUpdate,
+			payload:      []byte(`{"poolAddress":"0xCCC","holderCount":5}`),
+			wantType:     "holders_update",
+			wantPool:     "0xCCC",
+			wantCoalesce: "", // must-deliver
+		},
+		{
+			channel:      constants.ChannelReactionsUpdate,
+			payload:      []byte(`{"poolAddress":"0xDDD","rocket":3}`),
+			wantType:     "reactions_update",
+			wantPool:     "0xDDD",
+			wantCoalesce: "", // must-deliver
+		},
+		{
+			channel:      constants.ChannelPlatformUpdate,
+			payload:      []byte(`{"totalPools":42}`),
+			wantType:     "platform_update",
+			wantPool:     "", // global
+			wantCoalesce: constants.ChannelPlatformUpdate + ":",
+		},
+		{
+			channel:      constants.ChannelRankingsUpdate,
+			payload:      []byte(`{"category":"trending","items":[]}`),
+			wantType:     "rankings_update",
+			wantPool:     "", // global, client filters on category
+			wantCoalesce: "",
+		},
+		{
+			channel:      constants.ChannelPnlUpdate,
+			payload:      []byte(`{"userAddress":"0xUSER","totalValueUsdl":"500"}`),
+			wantType:     "pnl_update",
+			wantPool:     "", // global, client filters on userAddress
+			wantCoalesce: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.wantType, func(t *testing.T) {
+			m, ok := DefaultTransform(tc.channel, tc.payload)
+			if !ok {
+				t.Fatalf("transform %s: ok=false", tc.channel)
+			}
+			if m.pool != tc.wantPool {
+				t.Errorf("pool = %q, want %q", m.pool, tc.wantPool)
+			}
+			if m.coalesceKey != tc.wantCoalesce {
+				t.Errorf("coalesceKey = %q, want %q", m.coalesceKey, tc.wantCoalesce)
+			}
+			var frame struct {
+				Type    string          `json:"type"`
+				Channel string          `json:"channel"`
+				Pool    string          `json:"pool"`
+				Data    json.RawMessage `json:"data"`
+			}
+			if err := json.Unmarshal(m.bytes, &frame); err != nil {
+				t.Fatalf("frame unmarshal: %v", err)
+			}
+			if frame.Type != tc.wantType || frame.Channel != tc.channel || frame.Pool != tc.wantPool {
+				t.Errorf("frame = %+v, want type=%s channel=%s pool=%s", frame, tc.wantType, tc.channel, tc.wantPool)
+			}
+		})
+	}
+}
+
+// TestDispatch_StatsUpdateRoutesByPool ensures a stats snapshot only reaches the
+// subscriber filtering on its pool (no global firehose) and coalesces.
+func TestDispatch_StatsUpdateRoutesByPool(t *testing.T) {
+	b := newBroker()
+	sub := b.Subscribe(Filter{
+		Channels: chanSet(constants.ChannelStatsUpdate),
+		Pools:    map[string]struct{}{"0xAAA": {}},
+	}, 16)
+	defer sub.Close()
+
+	b.Dispatch(constants.ChannelStatsUpdate, []byte(`{"poolAddress":"0xAAA","priceUsdl":"1"}`)) // match
+	b.Dispatch(constants.ChannelStatsUpdate, []byte(`{"poolAddress":"0xAAA","priceUsdl":"2"}`)) // coalesces with prev
+	b.Dispatch(constants.ChannelStatsUpdate, []byte(`{"poolAddress":"0xBBB","priceUsdl":"9"}`)) // wrong pool
+
+	got := sub.Drain()
+	if len(got) != 1 {
+		t.Fatalf("Drain len = %d, want 1 (latest snapshot for 0xAAA only)", len(got))
+	}
+	var frame struct {
+		Data struct {
+			PriceUsdl string `json:"priceUsdl"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(got[0], &frame); err != nil {
+		t.Fatalf("frame unmarshal: %v", err)
+	}
+	if frame.Data.PriceUsdl != "2" {
+		t.Errorf("coalesced priceUsdl = %q, want 2 (latest)", frame.Data.PriceUsdl)
+	}
+}
+
+// TestDispatch_GlobalRankingsReachesPoolFilteredSubscriber confirms rankings/pnl
+// (poolless, global) are delivered to a pool-filtered subscriber for client-side
+// filtering on category/userAddress.
+func TestDispatch_GlobalRankingsReachesPoolFilteredSubscriber(t *testing.T) {
+	b := newBroker()
+	sub := b.Subscribe(Filter{
+		Channels: chanSet(constants.ChannelRankingsUpdate),
+		Pools:    map[string]struct{}{"0xAAA": {}},
+	}, 16)
+	defer sub.Close()
+
+	b.Dispatch(constants.ChannelRankingsUpdate, []byte(`{"category":"trending","items":[]}`))
+	if got := sub.Drain(); len(got) != 1 {
+		t.Fatalf("global rankings Drain len = %d, want 1", len(got))
+	}
+}
+
 func TestSubscribe_UnregisterReleasesIndex(t *testing.T) {
 	b := newBroker()
 	sub := b.Subscribe(Filter{Channels: chanSet(constants.ChannelSwap)}, 16)

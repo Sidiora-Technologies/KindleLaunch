@@ -1,3 +1,4 @@
+import path from 'path';
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 import bundleAnalyzer from '@next/bundle-analyzer';
@@ -10,8 +11,20 @@ const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'tr
 // NEXT_PUBLIC_WALLET_IFRAME_ORIGIN is always read fresh (not baked at build time).
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // `standalone` is for the Railway/Docker runtime (`node .next/standalone/
+  // server.js`). On Vercel it is unnecessary and its file-tracing follows
+  // pnpm's symlinked node_modules to absolute paths that break the deploy
+  // (styled-jsx ENOENT), so disable it there (Vercel sets VERCEL=1 at build).
+  output: process.env.VERCEL ? undefined : 'standalone',
   compress: true,
+
+  // This app lives at client/apps/web inside a pnpm workspace whose root is
+  // client/. Next's NFT auto-detection picks the wrong tracing root and emits
+  // symlinks that escape to an absolute /node_modules/.pnpm/... path, which
+  // makes `vercel deploy --prebuilt` die with `ENOENT lstat .../styled-jsx`
+  // (next.js#73648). Pinning the trace root to the workspace root keeps every
+  // traced symlink relative and inside the uploaded artifact.
+  outputFileTracingRoot: path.join(__dirname, '..', '..'),
 
   images: {
     remotePatterns: [

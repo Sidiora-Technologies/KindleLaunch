@@ -2,10 +2,60 @@ package ranker
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/ranking-algo/internal/internaltest"
 )
+
+// TestWritePublishesRankingsUpdate proves write() emits a rankings:update signal
+// carrying the de-prefixed category and the ordered items, so the client can
+// replace that one list without polling.
+func TestWritePublishesRankingsUpdate(t *testing.T) {
+	rdb := internaltest.NewRedis(t)
+	ctx := context.Background()
+	svc := NewService(nil, rdb, 10, nil)
+
+	sub := rdb.Subscribe(ctx, constants.ChannelRankingsUpdate)
+	if _, err := sub.Receive(ctx); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer sub.Close()
+
+	if err := svc.write(ctx, "ranking:trending", []Scored{
+		{Address: "0xb", Score: 5}, {Address: "0xa", Score: 1},
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var payload []byte
+	select {
+	case msg := <-sub.Channel():
+		payload = []byte(msg.Payload)
+	case <-time.After(3 * time.Second):
+		t.Fatal("expected rankings:update publish")
+	}
+
+	var got struct {
+		Category string `json:"category"`
+		Items    []struct {
+			Address string  `json:"address"`
+			Score   float64 `json:"score"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("unmarshal rankings:update: %v", err)
+	}
+	if got.Category != "trending" {
+		t.Errorf("category = %q, want trending (ranking: prefix stripped)", got.Category)
+	}
+	if len(got.Items) != 2 || got.Items[0].Address != "0xb" || got.Items[0].Score != 5 {
+		t.Errorf("items = %+v, want score-desc [0xb=5, 0xa=1]", got.Items)
+	}
+}
 
 func TestWriteSortsTruncatesAndPublishes(t *testing.T) {
 	rdb := internaltest.NewRedis(t)

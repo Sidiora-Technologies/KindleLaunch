@@ -62,7 +62,7 @@ module.exports = {
   },
   networks: {
     'paxeer-network': {
-      url: '',
+      url: 'https://api.hyperpax.xyz',
       accounts: privateKey ? [privateKey] : [],
     },
     localhost: {

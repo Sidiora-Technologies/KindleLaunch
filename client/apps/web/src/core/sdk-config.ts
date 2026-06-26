@@ -32,7 +32,7 @@ const GATEWAY = {
   dataOrigin: (process.env.NEXT_PUBLIC_DATA_ORIGIN || '').replace(/\/$/, ''),
   mediaOrigin: (process.env.NEXT_PUBLIC_MEDIA_ORIGIN || '').replace(/\/$/, ''),
   // Path prefixes (same-origin nginx routing).
-  dataApiBase: process.env.NEXT_PUBLIC_DATA_API_BASE || '/api',
+  dataApiBase: process.env.NEXT_PUBLIC_DATA_API_BASE || '',
   mediaApiBase: process.env.NEXT_PUBLIC_MEDIA_API_BASE || '/media',
   dataWsPath: process.env.NEXT_PUBLIC_DATA_WS_PATH || '/ws',
   dataCandlesWsPath: process.env.NEXT_PUBLIC_DATA_CANDLES_WS_PATH || '/ws/candles',

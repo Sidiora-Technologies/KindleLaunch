@@ -9,8 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	shareddb "github.com/Sidiora-Technologies/KindleLaunch/shared/db"
 	sharedhttp "github.com/Sidiora-Technologies/KindleLaunch/shared/http"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/stats-workers/internal/store"
 )
@@ -94,6 +96,9 @@ func pressure(st *store.Store, rdb *goredis.Client) http.HandlerFunc {
 
 		if payload, err := json.Marshal(result); err == nil {
 			rdb.Set(ctx, cacheKey, payload, pressureCacheTTL)
+			// Push-first: publish the freshly-computed pressure on pressure:update
+			// so subscribers of this pool update in place. Best-effort.
+			_ = sharedredis.PublishJSON(ctx, rdb, constants.ChannelPressureUpdate, payload)
 		}
 		sharedhttp.WriteJSON(w, http.StatusOK, result)
 	}

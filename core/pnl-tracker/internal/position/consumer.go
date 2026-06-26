@@ -8,11 +8,15 @@ package position
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
+	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/pnl-tracker/internal/pnlcache"
 	"github.com/Sidiora-Technologies/KindleLaunch/core/pnl-tracker/internal/store"
@@ -90,6 +94,13 @@ func (c *Consumer) ProcessEvent(ctx context.Context, ev SwapEvent) error {
 		// Cache busting is best-effort; the TTL bounds staleness. Log and proceed.
 		c.logger.Warn("failed to invalidate pnl cache",
 			slog.String("user", strings.ToLower(ev.Sender)), slog.Any("err", err))
+	}
+	// Push-first: signal pnl:update for this user so the client refetches the
+	// (now-busted) portfolio ONCE instead of polling. A signal (not the full
+	// summary) keeps the hot fold path cheap; the broker treats it as a global
+	// event and the client filters on userAddress. Best-effort.
+	if payload, err := json.Marshal(map[string]string{"userAddress": strings.ToLower(ev.Sender)}); err == nil {
+		_ = sharedredis.PublishJSON(ctx, c.redis, constants.ChannelPnlUpdate, payload)
 	}
 	return nil
 }
