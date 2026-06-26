@@ -212,3 +212,64 @@ func TestConsumerFallsBackToBlockNumber(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// TestConsumerUsesTopLevelBlockTimestamp asserts the consumer reads the timestamp
+// from the indexer envelope's top-level blockTimestamp (the real dual-delivery
+// shape) in preference to blockNumber — otherwise real Redis-path swaps would
+// resolve to a block number far below minValidTimestamp and be silently skipped.
+func TestConsumerUsesTopLevelBlockTimestamp(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, pool := internaltest.NewPostgres(t)
+	redisURL := internaltest.NewRedisURL(t)
+	opt, _ := goredis.ParseURL(redisURL)
+	rdb := goredis.NewClient(opt)
+	defer rdb.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	st := store.New(pool)
+	builder := engine.New(pool, rdb, st, logger)
+
+	sc, err := New(builder, redisURL, logger)
+	if err != nil {
+		t.Fatalf("New consumer: %v", err)
+	}
+	defer sc.Close()
+	if err := sc.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// blockNumber is a real (small) block height; the candle MUST bucket by the
+	// top-level blockTimestamp, not blockNumber.
+	msg, _ := json.Marshal(map[string]interface{}{
+		"eventName":      "Swap",
+		"blockNumber":    12345,
+		"blockTimestamp": 1704067380,
+		"txHash":         "0xfeed3",
+		"logIndex":       0,
+		"args": map[string]interface{}{
+			"poolAddress": cPool,
+			"sender":      "0xtrader",
+			"isBuy":       true,
+			"amountIn":    "100",
+			"amountOut":   "200",
+			"fee":         "1",
+			"price":       "1000000000000000000",
+		},
+	})
+	if err := rdb.Publish(ctx, constants.ChannelSwap, msg).Err(); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if got, err := st.GetCandle(ctx, cPool, "1m", 1704067380); err == nil && got != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("consumer did not fold candle bucketed by top-level blockTimestamp")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

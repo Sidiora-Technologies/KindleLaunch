@@ -91,6 +91,7 @@ export interface PoolStats {
   riskFactors?: string;
   createdAt: number;
   updatedAt?: number;
+  creatorAddress?: string;
 }
 
 /** GET /stats/{poolAddress}/transactions — actual API returns camelCase */

@@ -56,6 +56,8 @@ func RegisterStatus(r chi.Router, d StatusDeps) {
 				"totalFailures":        m.TotalFailures,
 				"totalDeadLettered":    m.TotalDeadLettered,
 				"totalDeduplicated":    m.TotalDeduplicated,
+				"totalRedisPublishes":  m.TotalRedisPublishes,
+				"totalRedisFailures":   m.TotalRedisFailures,
 				"currentInflight":      m.CurrentInflight,
 				"deadLetterQueueSize":  d.Publisher.DeadLetterCount(),
 			}

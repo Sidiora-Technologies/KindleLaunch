@@ -222,3 +222,79 @@ func TestProcessSwapInvalidAmountErrors(t *testing.T) {
 		t.Fatal("ProcessSwap with non-numeric volume should error")
 	}
 }
+
+// TestProcessSwapDedupSameInstance proves the in-memory + durable idempotency
+// guard: redelivering the SAME (txHash, logIndex) — as dual-delivery does — folds
+// the candle exactly once (no inflated volume / trade_count).
+func TestProcessSwapDedupSameInstance(t *testing.T) {
+	ctx := context.Background()
+	b, st, _ := newBuilder(t)
+
+	swap := engine.SwapEvent{
+		PoolAddress: bPool, Sender: "0xsenderAAAA", IsBuy: true,
+		AmountIn: "100", AmountOut: "200", Fee: "1", Price: priceA,
+		BlockTimestamp: bTS, TxHash: "0xdup", LogIndex: 0,
+	}
+	for i := 0; i < 3; i++ {
+		if err := b.ProcessSwap(ctx, swap); err != nil {
+			t.Fatalf("ProcessSwap #%d: %v", i, err)
+		}
+	}
+
+	got, err := st.GetCandle(ctx, bPool, "1m", bTS)
+	if err != nil || got == nil {
+		t.Fatalf("GetCandle = %v, err %v", got, err)
+	}
+	if got.TradeCount != 1 {
+		t.Errorf("tradeCount = %d, want 1 (duplicate folds suppressed)", got.TradeCount)
+	}
+	if got.VolumeUsdl != "100" {
+		t.Errorf("volumeUsdl = %s, want 100 (counted once)", got.VolumeUsdl)
+	}
+}
+
+// TestProcessSwapDedupDurableAcrossInstances proves the durable floor: a SECOND
+// builder with an empty in-memory cache (the restart / multi-replica case) still
+// refuses to re-fold a swap already claimed in candles.processed_swaps.
+func TestProcessSwapDedupDurableAcrossInstances(t *testing.T) {
+	ctx := context.Background()
+	_, pool := internaltest.NewPostgres(t)
+	redisURL := internaltest.NewRedisURL(t)
+	opt, err := goredis.ParseURL(redisURL)
+	if err != nil {
+		t.Fatalf("parse redis url: %v", err)
+	}
+	rdb := goredis.NewClient(opt)
+	t.Cleanup(func() { _ = rdb.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	st := store.New(pool)
+
+	swap := engine.SwapEvent{
+		PoolAddress: bPool, Sender: "0xsenderAAAA", IsBuy: true,
+		AmountIn: "100", AmountOut: "200", Fee: "1", Price: priceA,
+		BlockTimestamp: bTS, TxHash: "0xdup", LogIndex: 0,
+	}
+
+	first := engine.New(pool, rdb, st, logger)
+	if err := first.ProcessSwap(ctx, swap); err != nil {
+		t.Fatalf("first ProcessSwap: %v", err)
+	}
+
+	// Fresh builder => empty in-memory cache, so only the durable claim can stop
+	// the refold.
+	second := engine.New(pool, rdb, st, logger)
+	if err := second.ProcessSwap(ctx, swap); err != nil {
+		t.Fatalf("second ProcessSwap: %v", err)
+	}
+
+	got, err := st.GetCandle(ctx, bPool, "1m", bTS)
+	if err != nil || got == nil {
+		t.Fatalf("GetCandle = %v, err %v", got, err)
+	}
+	if got.TradeCount != 1 {
+		t.Errorf("tradeCount = %d, want 1 (durable dedup across instances)", got.TradeCount)
+	}
+	if got.VolumeUsdl != "100" {
+		t.Errorf("volumeUsdl = %s, want 100 (counted once)", got.VolumeUsdl)
+	}
+}

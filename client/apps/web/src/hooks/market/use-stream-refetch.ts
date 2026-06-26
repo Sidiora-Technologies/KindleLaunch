@@ -34,7 +34,9 @@ import { DataChannels, type DataChannel, type DataEvent } from '@/core/realtime/
  */
 function useThrottledCallback(fn: () => void, intervalMs: number): () => void {
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  useEffect(() => {
+    fnRef.current = fn;
+  });
 
   const lastRun = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,7 +101,9 @@ export function useRefetchOnPoolEvent(opts: RefetchOnPoolEventOptions): void {
 
   const qc = useQueryClient();
   const keysRef = useRef(keys);
-  keysRef.current = keys;
+  useEffect(() => {
+    keysRef.current = keys;
+  });
 
   const invalidate = useThrottledCallback(() => {
     for (const key of keysRef.current) {
@@ -108,7 +112,9 @@ export function useRefetchOnPoolEvent(opts: RefetchOnPoolEventOptions): void {
   }, throttleMs);
 
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  });
 
   const handle = useCallback(
     (event: DataEvent) => {
@@ -174,7 +180,9 @@ export function useRefetchOnAnyEvent(opts: RefetchOnAnyEventOptions): void {
 
   const qc = useQueryClient();
   const keysRef = useRef(keys);
-  keysRef.current = keys;
+  useEffect(() => {
+    keysRef.current = keys;
+  });
 
   const invalidate = useThrottledCallback(() => {
     for (const key of keysRef.current) {

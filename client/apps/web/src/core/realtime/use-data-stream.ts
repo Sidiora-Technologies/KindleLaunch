@@ -39,7 +39,9 @@ export function useDataStream(opts: UseDataStreamOptions): WsStatus {
   // Hold the latest callback in a ref so an inline closure does not churn the
   // subscription every render.
   const onEventRef = useRef(opts.onEvent);
-  onEventRef.current = opts.onEvent;
+  useEffect(() => {
+    onEventRef.current = opts.onEvent;
+  });
 
   // Stable identity keys so we only re-subscribe when the filter truly changes.
   const channelsKey = channels ? [...channels].sort().join(',') : '';

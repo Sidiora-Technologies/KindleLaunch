@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/shared/auth"
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	sharedredis "github.com/Sidiora-Technologies/KindleLaunch/shared/redis"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/core/indexer/internal/internaltest"
@@ -247,5 +248,55 @@ func TestDedupViaRedis(t *testing.T) {
 	}
 	if m := p.Snapshot(); m.TotalDeduplicated == 0 {
 		t.Errorf("TotalDeduplicated = 0, want >0")
+	}
+}
+
+// TestPublishBatchFansOutToRedis exercises the realtime dual-delivery path: with
+// NO webhook targets (a Redis-only deployment), every event must still be
+// PUBLISHed to its indexer:<event> channel as the per-event envelope.
+func TestPublishBatchFansOutToRedis(t *testing.T) {
+	url := internaltest.NewRedisURL(t)
+	rdb, err := sharedredis.NewClient(url)
+	if err != nil {
+		t.Fatalf("redis client: %v", err)
+	}
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	ctx := context.Background()
+	sub := rdb.Subscribe(ctx, constants.ChannelSwap, constants.ChannelMarketCreated)
+	if _, err := sub.Receive(ctx); err != nil { // wait for SUBSCRIBE to register
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer sub.Close()
+	ch := sub.Channel()
+
+	// No webhook targets — only the Redis path can deliver.
+	p := publisher.New(publisher.Options{Redis: rdb})
+	p.PublishBatch(ctx, sampleEvents())
+	p.WaitForInflight(5 * time.Second)
+
+	got := map[string]map[string]any{}
+	timeout := time.After(5 * time.Second)
+	for len(got) < 2 {
+		select {
+		case msg := <-ch:
+			var ev map[string]any
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
+				t.Fatalf("unmarshal redis event: %v", err)
+			}
+			got[msg.Channel] = ev
+		case <-timeout:
+			t.Fatalf("timed out; received %d of 2 channel messages", len(got))
+		}
+	}
+
+	if ev := got[constants.ChannelSwap]; ev["eventName"] != "Swap" || ev["txHash"] != "0xabc" {
+		t.Errorf("swap envelope wrong: %+v", ev)
+	}
+	if ev := got[constants.ChannelMarketCreated]; ev["eventName"] != "MarketCreated" {
+		t.Errorf("market_created envelope wrong: %+v", ev)
+	}
+	if m := p.Snapshot(); m.TotalRedisPublishes != 2 {
+		t.Errorf("TotalRedisPublishes = %d, want 2", m.TotalRedisPublishes)
 	}
 }

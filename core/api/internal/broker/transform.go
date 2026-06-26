@@ -44,9 +44,26 @@ var coalescable = map[string]bool{
 
 // routing is the minimal envelope the transform parses out of every payload to
 // route and (for candles) coalesce by pool+timeframe.
+//
+// poolAddress lives at the top level for the flat candle payload but is nested
+// under args for the indexer webhook envelope (the dual-delivery Redis payload
+// is one webhook event: {eventName,...,args:{poolAddress}}). We accept either so
+// a swap/pool_state event routes to its pool instead of fanning out globally.
 type routing struct {
 	PoolAddress string `json:"poolAddress"`
 	Timeframe   string `json:"timeframe"`
+	Args        struct {
+		PoolAddress string `json:"poolAddress"`
+	} `json:"args"`
+}
+
+// pool resolves the routing pool from the top-level field, falling back to the
+// args-nested field used by indexer:* envelopes. Empty means a global event.
+func (r routing) pool() string {
+	if r.PoolAddress != "" {
+		return r.PoolAddress
+	}
+	return r.Args.PoolAddress
 }
 
 // DefaultTransform converts a raw Redis channel payload into an OutMessage.
@@ -64,6 +81,7 @@ func DefaultTransform(channel string, payload []byte) (OutMessage, bool) {
 	if err := json.Unmarshal(payload, &r); err != nil {
 		return OutMessage{}, false
 	}
+	pool := r.pool()
 
 	typ, known := channelType[channel]
 	if !known {
@@ -72,7 +90,7 @@ func DefaultTransform(channel string, payload []byte) (OutMessage, bool) {
 
 	coalesceKey := ""
 	if coalescable[channel] {
-		coalesceKey = channel + ":" + r.PoolAddress
+		coalesceKey = channel + ":" + pool
 		if r.Timeframe != "" {
 			coalesceKey += ":" + r.Timeframe
 		}
@@ -83,19 +101,19 @@ func DefaultTransform(channel string, payload []byte) (OutMessage, bool) {
 		if !ok {
 			return OutMessage{}, false
 		}
-		return OutMessage{pool: r.PoolAddress, coalesceKey: coalesceKey, bytes: bytes}, true
+		return OutMessage{pool: pool, coalesceKey: coalesceKey, bytes: bytes}, true
 	}
 
 	frame, err := json.Marshal(map[string]any{
 		"type":    typ,
 		"channel": channel,
-		"pool":    r.PoolAddress,
+		"pool":    pool,
 		"data":    json.RawMessage(payload),
 	})
 	if err != nil {
 		return OutMessage{}, false
 	}
-	return OutMessage{pool: r.PoolAddress, coalesceKey: coalesceKey, bytes: frame}, true
+	return OutMessage{pool: pool, coalesceKey: coalesceKey, bytes: frame}, true
 }
 
 // candlePayload mirrors the candles:update payload the indexer/charts service

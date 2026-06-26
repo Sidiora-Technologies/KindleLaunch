@@ -40,11 +40,12 @@ func New(builder *engine.Builder, redisURL string, logger *slog.Logger) (*SwapCo
 func (sc *SwapConsumer) Start(ctx context.Context) error {
 	errc, err := sc.subscriber.Subscribe(ctx, constants.ChannelSwap, func(ctx context.Context, payload []byte) error {
 		var data struct {
-			EventName   string                 `json:"eventName"`
-			BlockNumber int64                  `json:"blockNumber"`
-			TxHash      string                 `json:"txHash"`
-			LogIndex    int                    `json:"logIndex"`
-			Args        map[string]interface{} `json:"args"`
+			EventName      string                 `json:"eventName"`
+			BlockNumber    int64                  `json:"blockNumber"`
+			BlockTimestamp int64                  `json:"blockTimestamp"`
+			TxHash         string                 `json:"txHash"`
+			LogIndex       int                    `json:"logIndex"`
+			Args           map[string]interface{} `json:"args"`
 		}
 		if err := json.Unmarshal(payload, &data); err != nil {
 			sc.logger.Error("consumer: unmarshal swap", slog.String("err", err.Error()))
@@ -64,10 +65,18 @@ func (sc *SwapConsumer) Start(ctx context.Context) error {
 			LogIndex:    data.LogIndex,
 		}
 
-		// Try blockTimestamp from args, fall back to blockNumber (parity with TS).
-		if ts := asInt64(data.Args["timestamp"]); ts > 0 {
-			swap.BlockTimestamp = ts
-		} else {
+		// Resolve the block timestamp. The indexer envelope (identical on the Redis
+		// and webhook paths) carries it top-level as blockTimestamp; fall back to
+		// args.blockTimestamp / args.timestamp, then blockNumber, for legacy and
+		// test message shapes.
+		switch {
+		case data.BlockTimestamp > 0:
+			swap.BlockTimestamp = data.BlockTimestamp
+		case asInt64(data.Args["blockTimestamp"]) > 0:
+			swap.BlockTimestamp = asInt64(data.Args["blockTimestamp"])
+		case asInt64(data.Args["timestamp"]) > 0:
+			swap.BlockTimestamp = asInt64(data.Args["timestamp"])
+		default:
 			swap.BlockTimestamp = data.BlockNumber
 		}
 

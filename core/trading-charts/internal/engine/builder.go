@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,6 +30,15 @@ var largeTradeThreshold = new(big.Int).SetInt64(500_000_000)
 
 // minValidTimestamp is Jan 1 2024 — any timestamp before this is clearly bad data.
 const minValidTimestamp int64 = 1704067200
+
+// dedupCacheTTL bounds how long a folded swap key is remembered in-process and
+// dedupCacheMax bounds its size. The durable candles.processed_swaps table is
+// the correctness floor, so the in-memory cache is a pure hot-path optimisation
+// and these values are not correctness-critical.
+const (
+	dedupCacheTTL = 2 * time.Minute
+	dedupCacheMax = 50_000
+)
 
 // SwapEvent is the input swap event from the indexer webhook or Redis pub/sub.
 type SwapEvent struct {
@@ -74,16 +85,30 @@ type Builder struct {
 	redis  *goredis.Client
 	store  *store.Store
 	logger *slog.Logger
+	seen   *dedupCache
 }
 
 // New creates a Builder.
 func New(pool *pgxpool.Pool, rdb *goredis.Client, st *store.Store, logger *slog.Logger) *Builder {
-	return &Builder{pool: pool, redis: rdb, store: st, logger: logger}
+	return &Builder{pool: pool, redis: rdb, store: st, logger: logger, seen: newDedupCache(dedupCacheTTL, dedupCacheMax)}
 }
 
-// ProcessSwap processes a single swap event across all timeframes.
+// ProcessSwap processes a single swap event across all timeframes, exactly once.
+//
+// The indexer dual-delivers each swap over both the Redis stream and the webhook
+// for redundancy, so the same swap can reach this method twice. Folding it twice
+// would double-count candle volume/trades (a money invariant breach), so the
+// fold is guarded by an idempotency claim on (txHash, logIndex): an in-memory
+// TTL fast-path short-circuits the common near-simultaneous duplicate, and a
+// durable claim in candles.processed_swaps (inside the candle transaction) is
+// the correctness floor that survives restart and multi-replica fan-out.
 func (b *Builder) ProcessSwap(ctx context.Context, swap SwapEvent) error {
 	if swap.BlockTimestamp == 0 || swap.BlockTimestamp < minValidTimestamp {
+		return nil
+	}
+
+	dedupKey := swap.TxHash + ":" + strconv.Itoa(swap.LogIndex)
+	if swap.TxHash != "" && b.seen.has(dedupKey) {
 		return nil
 	}
 
@@ -101,6 +126,22 @@ func (b *Builder) ProcessSwap(ctx context.Context, swap SwapEvent) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }() //nolint:errcheck // no-op after commit; rollback is best-effort cleanup
 
+	// Durable idempotency claim (i9): a zero-row insert means another path/replica
+	// already folded this swap, so skip the fold entirely (the tx rolls back).
+	if swap.TxHash != "" {
+		ct, err := tx.Exec(ctx, `
+			INSERT INTO candles.processed_swaps (tx_hash, log_index)
+			VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, swap.TxHash, swap.LogIndex)
+		if err != nil {
+			return fmt.Errorf("engine: claim swap: %w", err)
+		}
+		if ct.RowsAffected() == 0 {
+			b.seen.add(dedupKey)
+			return nil
+		}
+	}
+
 	for _, tf := range constants.TimeframeKeys {
 		if err := b.upsertCandleInTx(ctx, tx, swap.PoolAddress, tf, swap.BlockTimestamp, swap.Price,
 			volumeUsdl, volumeToken, swap.IsBuy, swap.Sender); err != nil {
@@ -110,6 +151,9 @@ func (b *Builder) ProcessSwap(ctx context.Context, swap SwapEvent) error {
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("engine: commit: %w", err)
+	}
+	if swap.TxHash != "" {
+		b.seen.add(dedupKey)
 	}
 	return nil
 }
@@ -356,4 +400,57 @@ func (b *Builder) publishCandleUpdate(ctx context.Context, event CandleUpdateEve
 		b.logger.Warn("engine: publish candle update", slog.String("err", err.Error()))
 	}
 	return nil
+}
+
+// dedupCache is a small, bounded, TTL'd set of recently-folded (txHash:logIndex)
+// keys. It short-circuits the common near-simultaneous dual-delivery duplicate
+// before a DB round-trip; correctness never depends on it (the
+// candles.processed_swaps table is the durable floor). Concurrency-safe.
+type dedupCache struct {
+	mu      sync.Mutex
+	entries map[string]int64 // key -> expiry (unix nanos)
+	ttl     time.Duration
+	max     int
+	now     func() time.Time
+}
+
+func newDedupCache(ttl time.Duration, max int) *dedupCache {
+	return &dedupCache{entries: make(map[string]int64), ttl: ttl, max: max, now: time.Now}
+}
+
+// has reports whether key is present and unexpired, pruning it if expired.
+func (c *dedupCache) has(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	exp, ok := c.entries[key]
+	if !ok {
+		return false
+	}
+	if c.now().UnixNano() > exp {
+		delete(c.entries, key)
+		return false
+	}
+	return true
+}
+
+// add records key with a fresh TTL, pruning expired entries (and, if still at
+// capacity, evicting arbitrary entries) to keep memory bounded.
+func (c *dedupCache) add(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now().UnixNano()
+	if len(c.entries) >= c.max {
+		for k, exp := range c.entries {
+			if now > exp {
+				delete(c.entries, k)
+			}
+		}
+		for k := range c.entries {
+			if len(c.entries) < c.max {
+				break
+			}
+			delete(c.entries, k)
+		}
+	}
+	c.entries[key] = now + c.ttl.Nanoseconds()
 }

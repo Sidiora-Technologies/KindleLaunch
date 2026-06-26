@@ -1,13 +1,21 @@
-// Package publisher fans decoded events out to downstream consumers as
-// HMAC-SHA256-signed webhooks, parity with the TS publishers/event-publisher.ts.
+// Package publisher fans decoded events out to downstream consumers over TWO
+// independent delivery paths so a failure in either still reaches the consumer:
+//
+//  1. Redis pub/sub — each event is PUBLISHed to its indexer:<event> channel for
+//     low-latency realtime fan-out (consumed by core/api's broker and the
+//     trading-charts candle builder). Best-effort, fire-and-forget.
+//  2. HMAC-SHA256-signed webhooks — the batch is POSTed to every configured
+//     target for durable, retried delivery (parity with the TS
+//     publishers/event-publisher.ts).
 //
 // The signature scheme is byte-identical to the TS receivers (and the shared Go
 // auth.SignWebhook): "sha256=" + hex(HMAC_SHA256(secret, timestamp + "." +
 // body)) over the RAW body, with an X-Sidiora-Timestamp header the receiver
-// uses for its ±300s replay window (invariant i3). Delivery is fire-and-forget
-// with exponential backoff; permanent failures land in a bounded dead-letter
-// queue. An optional Redis client provides batch dedup on restart (invariant
-// i4/i9).
+// uses for its ±300s replay window (invariant i3). Webhook delivery is
+// fire-and-forget with exponential backoff; permanent failures land in a bounded
+// dead-letter queue. An optional Redis client provides batch dedup on restart
+// (invariant i4/i9) and is also the transport for path 1. Because both paths can
+// deliver the same event, consumers MUST be idempotent on (txHash, logIndex).
 package publisher
 
 import (
@@ -28,7 +36,22 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/shared/auth"
+	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 )
+
+// eventChannel maps an indexer event name to its Redis pub/sub channel for the
+// realtime fan-out path. Events with no realtime channel (e.g. TokenForTokenSwap)
+// are intentionally absent — they reach consumers via the webhook path only.
+var eventChannel = map[string]string{
+	"MarketCreated":      constants.ChannelMarketCreated,
+	"Swap":               constants.ChannelSwap,
+	"PoolStateUpdated":   constants.ChannelPoolStateUpdated,
+	"FeeRecorded":        constants.ChannelFeeRecorded,
+	"FeeDistributed":     constants.ChannelFeeDistributed,
+	"FeeStrategyChanged": constants.ChannelFeeStrategyChanged,
+	"OpticalExecuted":    constants.ChannelOpticalExecuted,
+	"ConfigUpdated":      constants.ChannelConfigUpdated,
+}
 
 const (
 	headerTimestamp = "X-Sidiora-Timestamp"
@@ -75,6 +98,8 @@ type Metrics struct {
 	TotalFailures        int64 `json:"totalFailures"`
 	TotalDeadLettered    int64 `json:"totalDeadLettered"`
 	TotalDeduplicated    int64 `json:"totalDeduplicated"`
+	TotalRedisPublishes  int64 `json:"totalRedisPublishes"`
+	TotalRedisFailures   int64 `json:"totalRedisFailures"`
 	CurrentInflight      int64 `json:"currentInflight"`
 }
 
@@ -130,6 +155,8 @@ type Publisher struct {
 		failures    atomic.Int64
 		deadLetters atomic.Int64
 		deduped     atomic.Int64
+		redisPub    atomic.Int64
+		redisFail   atomic.Int64
 	}
 }
 
@@ -173,19 +200,36 @@ func (p *Publisher) SetBackfillMode(enabled bool) {
 	p.logger.Info("publisher: backfill mode toggled", slog.Bool("backfillMode", enabled))
 }
 
-// PublishBatch signs and delivers events to every target. It returns once each
-// per-target delivery goroutine has been scheduled (fire-and-forget); the
-// indexing loop is never blocked on retry backoff.
+// PublishBatch fans events out over both delivery paths (Redis pub/sub +
+// signed webhooks). It returns once each delivery goroutine has been scheduled
+// (fire-and-forget); the indexing loop is never blocked on Redis or retry
+// backoff.
 func (p *Publisher) PublishBatch(ctx context.Context, events []WebhookEvent) {
-	if len(events) == 0 || len(p.targets) == 0 || p.backfill.Load() {
+	if len(events) == 0 || p.backfill.Load() {
 		return
 	}
 
-	// Idempotency guard (i4): skip a batch we've already delivered (restart
-	// redelivery). Best-effort — Redis errors fall through to delivery.
+	// Idempotency guard (i4): skip a batch we've already fanned out (restart
+	// redelivery) so neither path re-fans it. Best-effort — Redis errors fall
+	// through to delivery.
 	if p.redis != nil && p.isDuplicate(ctx, events) {
 		p.m.deduped.Add(int64(len(events)))
-		p.logger.Info("publisher: duplicate webhook batch skipped (i4)", slog.Int("count", len(events)))
+		p.logger.Info("publisher: duplicate batch skipped (i4)", slog.Int("count", len(events)))
+		return
+	}
+
+	// Path 1: realtime fan-out via Redis pub/sub. One goroutine per batch so the
+	// per-event publish order is preserved; tracked by wg for graceful drain.
+	if p.redis != nil {
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			p.publishRedis(ctx, events)
+		}()
+	}
+
+	// Path 2: durable signed webhooks. No targets => Redis-only deployment.
+	if len(p.targets) == 0 {
 		return
 	}
 
@@ -218,6 +262,33 @@ func (p *Publisher) PublishBatch(ctx context.Context, events []WebhookEvent) {
 			}
 			p.m.deliveries.Add(1)
 		}(t)
+	}
+}
+
+// publishRedis PUBLISHes each event to its realtime Redis channel (the
+// dual-delivery path). The message body is the per-event envelope — byte-shape
+// identical to one element of the webhook batch — so a consumer can process
+// either path interchangeably. Failures are logged and counted, never fatal:
+// the webhook path is the durable backstop.
+func (p *Publisher) publishRedis(ctx context.Context, events []WebhookEvent) {
+	for i := range events {
+		ch, ok := eventChannel[events[i].EventName]
+		if !ok {
+			continue
+		}
+		body, err := json.Marshal(events[i])
+		if err != nil {
+			p.logger.Error("publisher: encode redis event failed",
+				slog.String("event", events[i].EventName), slog.String("err", err.Error()))
+			continue
+		}
+		if err := p.redis.Publish(ctx, ch, body).Err(); err != nil {
+			p.m.redisFail.Add(1)
+			p.logger.Warn("publisher: redis publish failed",
+				slog.String("channel", ch), slog.String("err", err.Error()))
+			continue
+		}
+		p.m.redisPub.Add(1)
 	}
 }
 
@@ -330,6 +401,8 @@ func (p *Publisher) Snapshot() Metrics {
 		TotalFailures:        p.m.failures.Load(),
 		TotalDeadLettered:    p.m.deadLetters.Load(),
 		TotalDeduplicated:    p.m.deduped.Load(),
+		TotalRedisPublishes:  p.m.redisPub.Load(),
+		TotalRedisFailures:   p.m.redisFail.Load(),
 		CurrentInflight:      p.inflight.Load(),
 	}
 }

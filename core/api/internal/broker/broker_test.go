@@ -109,6 +109,57 @@ func TestDefaultTransform_InvalidJSON(t *testing.T) {
 	}
 }
 
+// argsNestedSwap is the indexer webhook envelope shape (the dual-delivery Redis
+// payload): poolAddress lives under args, not at the top level.
+func argsNestedSwap(pool string) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"eventName": "Swap",
+		"txHash":    "0xfeed",
+		"logIndex":  0,
+		"args":      map[string]any{"poolAddress": pool, "sender": "0x1", "isBuy": true},
+	})
+	return b
+}
+
+func TestDefaultTransform_ResolvesArgsNestedPool(t *testing.T) {
+	m, ok := DefaultTransform(constants.ChannelSwap, argsNestedSwap("0xNESTED"))
+	if !ok {
+		t.Fatal("transform args-nested swap: ok=false")
+	}
+	if m.pool != "0xNESTED" {
+		t.Errorf("pool = %q, want 0xNESTED (resolved from args)", m.pool)
+	}
+	var frame struct {
+		Pool string `json:"pool"`
+	}
+	if err := json.Unmarshal(m.bytes, &frame); err != nil {
+		t.Fatalf("frame unmarshal: %v", err)
+	}
+	if frame.Pool != "0xNESTED" {
+		t.Errorf("frame.pool = %q, want 0xNESTED", frame.Pool)
+	}
+}
+
+// TestDispatch_ArgsNestedSwapDoesNotFanOutGlobally is the regression for the
+// global-firehose bug: a swap carrying only an args-nested poolAddress must be
+// routed to its pool, so a pool-filtered subscriber only sees its own pool.
+func TestDispatch_ArgsNestedSwapDoesNotFanOutGlobally(t *testing.T) {
+	b := newBroker()
+	sub := b.Subscribe(Filter{
+		Channels: chanSet(constants.ChannelSwap),
+		Pools:    map[string]struct{}{"0xAAA": {}},
+	}, 16)
+	defer sub.Close()
+
+	b.Dispatch(constants.ChannelSwap, argsNestedSwap("0xAAA")) // match
+	b.Dispatch(constants.ChannelSwap, argsNestedSwap("0xBBB")) // must be filtered out
+
+	got := sub.Drain()
+	if len(got) != 1 {
+		t.Fatalf("Drain len = %d, want 1 (args-nested swap for 0xBBB must not leak)", len(got))
+	}
+}
+
 func TestDispatch_RoutesByChannelAndPool(t *testing.T) {
 	b := newBroker()
 	sub := b.Subscribe(Filter{
