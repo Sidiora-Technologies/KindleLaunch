@@ -1,6 +1,8 @@
 <div align="center">
 
-# KindleLaunch
+# Kindle Launch™️ A Sidiora and Paxlabs Protocol
+
+<img src="https://cdn.redixusercontent.ocfstudio.com/Welcome_banner.png">
 
 **The launchpad AMM and real-time trading platform for the Paxeer Network.**
 

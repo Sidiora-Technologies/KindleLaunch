@@ -9,7 +9,11 @@ client/packages/
 client/node_modules/
 client/docs/
 client/development/
-client/apps/
+client/apps/web/src/core
+client/apps/web/.env
+client/apps/web/src/app
+client/apps/web/src/assets
+client/apps/web/public
 
 knowledge/andrew_commandbook.md
 
