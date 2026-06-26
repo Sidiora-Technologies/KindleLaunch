@@ -1,8 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { sdkBaseUrls } from '@/core/sdk-config';
-import { queryKeys } from '@/core/query-keys';
+import { useMemo } from 'react';
+import { useTokenStats } from '@/hooks/market/use-token-stats';
 
 type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -20,6 +19,24 @@ interface RiskDetail {
     isNew?: boolean;
     ageSeconds?: number | null;
   };
+}
+
+/** Derive the rich RiskDetail view-model from the (push-first) pool stats. */
+function levelFromRating(rating: number): RiskLevel {
+  if (rating <= 33) return 'low';
+  if (rating <= 66) return 'medium';
+  return 'high';
+}
+
+function parseFactors(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    // Tolerate a plain comma-separated string.
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
 }
 
 const FACTOR_LABELS: Record<string, { label: string; tone: string }> = {
@@ -43,18 +60,27 @@ interface RiskPanelProps {
 }
 
 export default function RiskPanel({ poolAddress }: RiskPanelProps) {
-  const { data: risk } = useQuery<RiskDetail | null>({
-    queryKey: queryKeys.tokenRisk(poolAddress),
-    queryFn: async () => {
-      const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/risk`);
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: !!poolAddress,
-    staleTime: 15_000,
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  });
+  // Risk is part of the (push-first) pool stats snapshot — core/api exposes no
+  // dedicated /stats/{pool}/risk route. Deriving here means it re-validates on
+  // the same swap / pool_state_updated deltas as the rest of the stats.
+  const { data: stats } = useTokenStats(poolAddress);
+
+  const risk = useMemo<RiskDetail | null>(() => {
+    if (!stats || stats.riskRating === undefined || stats.riskRating === null) return null;
+    const rating = stats.riskRating;
+    return {
+      poolAddress,
+      riskRating: rating,
+      riskLevel: levelFromRating(rating),
+      riskFactors: parseFactors(stats.riskFactors),
+      details: {
+        holderCount: stats.holderCount,
+        top10ConcentrationPct: stats.top10Concentration,
+        creatorHoldingsPct: stats.creatorHoldingsPct,
+        ageSeconds: stats.createdAt ? Math.max(0, Math.floor(Date.now() / 1000) - stats.createdAt) : null,
+      },
+    };
+  }, [stats, poolAddress]);
 
   if (!risk) return null;
 

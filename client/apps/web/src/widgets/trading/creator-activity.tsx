@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { formatAddress, formatPrice } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { useTokenStats } from '@/hooks/market/use-token-stats';
+import { usePoolEvents } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
 
 interface Transaction {
   id: string;
@@ -26,17 +28,6 @@ interface CreatorSummary {
   netTokenBalance: string;
 }
 
-interface CreatorActivityData {
-  poolAddress: string;
-  creatorAddress: string | null;
-  createdAt: number;
-  currentBalance: string;
-  currentHoldingsPct: number;
-  currentHoldingsPctHuman?: string;
-  summary: CreatorSummary;
-  transactions: Transaction[];
-}
-
 interface CreatorActivityProps {
   poolAddress: string;
 }
@@ -49,34 +40,79 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+const MAX_CREATOR_TXS = 50;
+
+function str(v: unknown): string {
+  return v === undefined || v === null ? '' : String(v);
+}
+
 export default function CreatorActivity({ poolAddress }: CreatorActivityProps) {
-  const [data, setData] = useState<CreatorActivityData | null>(null);
   const [showTxs, setShowTxs] = useState(false);
+  const [creatorTxs, setCreatorTxs] = useState<Transaction[]>([]);
+  const seen = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!poolAddress) return;
-    let cancelled = false;
+  // Creator identity + current holdings come from the push-first pool stats.
+  // core/api exposes no /stats/{pool}/creator-activity route, so the buy/sell
+  // history is accumulated live from the swap stream (creator == sender).
+  const { data: stats } = useTokenStats(poolAddress);
+  const creatorAddress = stats?.creatorAddress ?? null;
 
-    async function load() {
-      try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/creator-activity`);
-        if (!res.ok) return;
-        const json = await res.json();
-        if (!cancelled) setData(json);
-      } catch {}
-    }
+  const onSwap = useCallback(
+    (event: DataEvent) => {
+      if (!creatorAddress) return;
+      const env = (event.data ?? {}) as Record<string, unknown>;
+      const args = ((env.args as Record<string, unknown>) ?? env) as Record<string, unknown>;
+      const sender = str(args.sender);
+      if (!sender || sender.toLowerCase() !== creatorAddress.toLowerCase()) return;
 
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [poolAddress]);
+      const txHash = str(env.txHash ?? args.txHash);
+      const logIndex = str(env.logIndex ?? args.logIndex);
+      const ts = Number(args.timestamp ?? env.blockTimestamp ?? args.blockTimestamp ?? 0);
+      const id = txHash ? `${txHash}-${logIndex}` : `${sender}-${ts}-${Math.random().toString(36).slice(2, 8)}`;
+      if (seen.current.has(id)) return;
+      seen.current.add(id);
 
-  if (!data || !data.creatorAddress) return null;
+      const tx: Transaction = {
+        id,
+        poolAddress,
+        sender,
+        isBuy: Boolean(args.isBuy),
+        amountIn: str(args.amountIn),
+        amountOut: str(args.amountOut),
+        price: str(args.price),
+        fee: str(args.fee),
+        blockTimestamp: ts,
+        txHash,
+      };
+      setCreatorTxs((prev) => {
+        const next = [tx, ...prev].slice(0, MAX_CREATOR_TXS);
+        if (seen.current.size > MAX_CREATOR_TXS * 4) seen.current = new Set(next.map((t) => t.id));
+        return next;
+      });
+    },
+    [creatorAddress, poolAddress],
+  );
 
-  const holdingsPct = data.currentHoldingsPctHuman ?? `${Number((data.currentHoldingsPct ?? 0) / 100).toFixed(2)}%`;
-  const txs = data.transactions ?? [];
+  usePoolEvents(poolAddress, [DataChannels.Swap], onSwap, !!poolAddress && !!creatorAddress);
+
+  const summary = useMemo<CreatorSummary>(() => {
+    const buyCount = creatorTxs.filter((t) => t.isBuy).length;
+    const sellCount = creatorTxs.length - buyCount;
+    return {
+      buyCount,
+      sellCount,
+      hasSold: sellCount > 0,
+      totalBoughtTokens: '0',
+      totalSoldTokens: '0',
+      netTokenBalance: '0',
+    };
+  }, [creatorTxs]);
+
+  if (!creatorAddress) return null;
+
+  const holdingsPct = stats?.creatorHoldingsPct ? `${stats.creatorHoldingsPct}%` : '—';
+  const txs = creatorTxs;
   const displayTxs = showTxs ? txs : txs.slice(0, 5);
-  const summary = data.summary ?? { buyCount: 0, sellCount: 0, hasSold: false, totalBoughtTokens: '0', totalSoldTokens: '0', netTokenBalance: '0' };
 
   return (
     <div className="border border-dark-gray rounded-lg overflow-hidden">
@@ -97,10 +133,10 @@ export default function CreatorActivity({ poolAddress }: CreatorActivityProps) {
       {/* Creator address + holdings */}
       <div className="px-3 py-2.5 border-b border-dark-gray flex items-center justify-between">
         <a
-          href={`/profile/${data.creatorAddress}`}
+          href={`/profile/${creatorAddress}`}
           className="text-size-10 text-half-enabled hover:text-pink-middle transition font-manrope-bold"
         >
-          {formatAddress(data.creatorAddress, 5)}
+          {formatAddress(creatorAddress, 5)}
         </a>
         <div className="text-right">
           <div className="text-size-10 font-manrope-bold text-white">{holdingsPct} held</div>

@@ -2,10 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { usePoolChat } from '@/hooks/chat/use-chat';
+import { usePoolTrades } from '@/hooks/market/use-pool-trades';
 import { formatAddress, formatPrice, formatTokenAmount, formatVolume } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
 import type { PoolMessage } from '@/core/clients/chat-api';
-import { reportError } from '@/core/report-error';
 
 interface PoolChatProps {
   poolAddress: string;
@@ -226,41 +225,12 @@ export default function PoolChat({ poolAddress }: PoolChatProps) {
 }
 
 // ── Trades tab (inline, replaces standalone TxFeed) ────────
-interface Tx {
-  id: string;
-  sender: string;
-  isBuy: boolean;
-  amountIn: string;
-  amountOut: string;
-  price: string;
-  blockTimestamp: number;
-}
-
 function TradesTab({ poolAddress }: { poolAddress: string }) {
-  const [txs, setTxs] = useState<Tx[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'buy' | 'sell'>('all');
 
-  useEffect(() => {
-    if (!poolAddress) return;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/transactions?limit=50&type=${filter}`);
-        if (res.ok && !cancelled) {
-          const data = await res.json();
-          setTxs(data.transactions ?? []);
-        }
-      } catch (error) {
-        reportError(error, { area: 'pool-chat-trades', action: 'loadTrades', poolAddress });
-      } finally { if (!cancelled) setLoading(false); }
-    }
-
-    load();
-    const interval = setInterval(load, 5_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [poolAddress, filter]);
+  // Push-first: live trades off the swap stream (core/api has no recent-trades
+  // REST snapshot), replacing the dead /stats/{pool}/transactions 5s poll.
+  const { data: txs, isLoading: loading } = usePoolTrades(poolAddress, filter);
 
   return (
     <div>

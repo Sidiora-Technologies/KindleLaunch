@@ -29,14 +29,13 @@ export default function TokenGrid({ category }: TokenGridProps) {
     category,
     PAGE_SIZE,
     page * PAGE_SIZE,
-    { refetchInterval: 30_000 },
   );
 
   const items = rankingData?.items ?? [];
   const total = rankingData?.total ?? 0;
   const poolAddrs = useMemo(() => items.map((i) => i.poolAddress), [items]);
 
-  const { data: batchStats = {} } = useTokenStatsBatch(poolAddrs, { refetchInterval: 30_000 });
+  const { data: batchStats = {} } = useTokenStatsBatch(poolAddrs);
 
   // Metadata: derive token addresses from stats, then batch-fetch
   const tokenAddrs = useMemo(() => {

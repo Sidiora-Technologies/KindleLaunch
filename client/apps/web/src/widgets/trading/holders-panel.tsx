@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { formatAddress, formatNumber, safeFixed } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { formatAddress, formatNumber, safeFixed, from6dec } from '@/utils/format';
+import { dataApiUrl } from '@/core/sdk-config';
+import { useReloadOnPoolEvent } from '@/hooks/market/use-stream-refetch';
 
 /**
- * 3.1: Uses backend /stats/:pool/holders instead of Paxscan API.
+ * Push-first: one /bff/token/{pool} snapshot (stats + top holders) re-loaded on
+ * the pool's swap deltas. core/api has no /stats/{pool}/holders route.
  */
 
 interface BackendHolder {
@@ -14,6 +16,14 @@ interface BackendHolder {
   balance: string;
   balanceFormatted: number;
   pctOfSupply: number;
+}
+
+interface RawHolder {
+  holderAddress?: string;
+  address?: string;
+  balance: string;
+  pctOfSupply: string | number;
+  isContract?: boolean;
 }
 
 interface HoldersPanelProps {
@@ -32,22 +42,26 @@ export default function HoldersPanel({ poolAddress }: HoldersPanelProps) {
 
   const fetchData = useCallback(async () => {
     if (!poolAddress) return;
-    setLoading(true);
     try {
-      const [statsRes, holdersRes] = await Promise.all([
-        fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`).then(r => r.ok ? r.json() : null),
-        fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/holders?limit=50`).then(r => r.ok ? r.json() : null),
-      ]);
+      const bff = await fetch(dataApiUrl(`/bff/token/${poolAddress}`)).then(r => (r.ok ? r.json() : null));
+      const statsRes = bff?.stats ?? null;
+      const holdersRes: RawHolder[] = Array.isArray(bff?.holders) ? bff.holders : [];
 
       if (statsRes) {
         setHolderCount(statsRes.holderCount ?? 0);
-        setTop10Conc(statsRes.top10Concentration ?? 0);
-        setCreatorPct(statsRes.creatorHoldingsPct ?? 0);
+        setTop10Conc(Number(statsRes.top10Concentration ?? 0));
+        setCreatorPct(Number(statsRes.creatorHoldingsPct ?? 0));
       }
 
-      if (holdersRes?.holders) {
-        setHolders(holdersRes.holders);
-      }
+      setHolders(
+        holdersRes.map((h) => ({
+          address: h.holderAddress ?? h.address ?? '',
+          isContract: h.isContract ?? false,
+          balance: h.balance,
+          balanceFormatted: from6dec(h.balance),
+          pctOfSupply: Number(h.pctOfSupply ?? 0),
+        })),
+      );
     } catch (e) {
       console.error('Failed to fetch holders:', e);
     } finally {
@@ -55,11 +69,14 @@ export default function HoldersPanel({ poolAddress }: HoldersPanelProps) {
     }
   }, [poolAddress]);
 
+  // Initial snapshot.
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30_000);
-    return () => clearInterval(interval);
+    setLoading(true);
+    void fetchData();
   }, [fetchData]);
+
+  // Re-load on the pool's live deltas (push replaces the 30s timer).
+  useReloadOnPoolEvent(poolAddress, fetchData);
 
   const displayHolders = tab === 'top' ? holders.slice(0, 10) : holders;
 

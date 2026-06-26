@@ -5,17 +5,16 @@
 *.prof
 bin/
 dist/
-client/packages/
-client/node_modules/
-client/docs/
-client/development/
-client/apps/web/src/core
+client/apps/web/src/core/wallet-sdk
 client/apps/web/.env
-client/apps/web/src/app
-client/apps/web/src/assets
-client/apps/web/public
+client/apps/web/node_modules
+client/development/openapi
+client/docs
+client/node_modules
+client/packages
 
 knowledge/andrew_commandbook.md
+knowledge/*.png
 
 # Local env (never commit secrets — SECTION 17 security)
 *.env

@@ -60,13 +60,14 @@ function enrich(
  * React Query. Every key is centralized so BentoHero, TrendingStrip, and
  * GlobalSearch all share the cache — at 100k+ users on the home page,
  * trending-data fires ONE network call across all three components, not
- * three. Polling is paused on hidden tabs (refetchIntervalInBackground: false).
+ * three. Live deltas ride the shared data-stream (push-first); the hooks keep a
+ * slow visible-tab backstop poll internally.
  */
 export function useBentoHero(): BentoHeroData {
-  const trendingQuery = useRanking('trending', 8, 0, { refetchInterval: 60_000 });
-  const moversQuery = useRanking('movers', 1, 0, { refetchInterval: 60_000 });
-  const newQuery = useRanking('new', 1, 0, { refetchInterval: 60_000 });
-  const platformQuery = usePlatformStats({ refetchInterval: 60_000 });
+  const trendingQuery = useRanking('trending', 8, 0);
+  const moversQuery = useRanking('movers', 1, 0);
+  const newQuery = useRanking('new', 1, 0);
+  const platformQuery = usePlatformStats();
 
   // Combine all pool addresses we need stats for
   const allPools = useMemo(() => {
@@ -77,7 +78,7 @@ export function useBentoHero(): BentoHeroData {
     return [...new Set(pools.map((p) => p.toLowerCase()))];
   }, [trendingQuery.data, moversQuery.data, newQuery.data]);
 
-  const statsBatch = useTokenStatsBatch(allPools, { refetchInterval: 30_000 });
+  const statsBatch = useTokenStatsBatch(allPools);
 
   // Pull token addresses from stats so we can fetch their metadata in one batch
   const tokenAddrs = useMemo(() => {

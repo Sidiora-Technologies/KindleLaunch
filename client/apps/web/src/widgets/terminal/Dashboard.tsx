@@ -2,15 +2,13 @@
 
 import { useEffect } from 'react';
 import Main from "./Content/Main";
-import { useTerminalStore } from "@/utils/stores/terminalStore";
+import { useTerminalStore, useTerminalLiveSync } from "@/utils/stores/terminalStore";
 
 const Dashboard = () => {
   const fetchRankings = useTerminalStore((s) => s.fetchRankings);
   const trendingTokens = useTerminalStore((s) => s.trendingTokens);
   const selectedPool = useTerminalStore((s) => s.selectedPool);
   const selectPool = useTerminalStore((s) => s.selectPool);
-  const startPolling = useTerminalStore((s) => s.startPolling);
-  const stopPolling = useTerminalStore((s) => s.stopPolling);
 
   useEffect(() => {
     fetchRankings();
@@ -22,12 +20,9 @@ const Dashboard = () => {
     }
   }, [selectedPool, trendingTokens, selectPool]);
 
-  useEffect(() => {
-    if (selectedPool) {
-      startPolling();
-      return () => stopPolling();
-    }
-  }, [selectedPool, startPolling, stopPolling]);
+  // Push-first: live trades + throttled stats/holders refresh off the data stream
+  // (replaces the old 10s setInterval poll).
+  useTerminalLiveSync(selectedPool);
 
   return (
     <div className="text-white">

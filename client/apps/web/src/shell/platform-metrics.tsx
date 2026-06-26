@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { dataApiUrl } from '@/core/sdk-config';
 import { reportError } from '@/core/report-error';
+import { useReloadOnAnyEvent } from '@/hooks/market/use-stream-refetch';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
 interface PlatformData {
@@ -28,22 +29,19 @@ function MetricRow({ label, value }: { label: string; value: string }) {
 export function PlatformMetricsCompact({ expanded }: { expanded: boolean }) {
   const [data, setData] = useState<PlatformData | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch(dataApiUrl('/platform/metrics'));
-        if (!res.ok) return;
-        const d = await res.json();
-        if (!cancelled) setData(d);
-      } catch (error) {
-        reportError(error, { area: 'platform-metrics', action: 'loadCompact' });
-      }
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(dataApiUrl('/platform/metrics'));
+      if (!res.ok) return;
+      setData(await res.json());
+    } catch (error) {
+      reportError(error, { area: 'platform-metrics', action: 'loadCompact' });
     }
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  // Push-first: re-validate on the global firehose (throttled), not a fixed poll.
+  useReloadOnAnyEvent(load, { throttleMs: 30_000 });
 
   if (!data) return null;
 
@@ -100,22 +98,18 @@ export function PlatformMetricsCompact({ expanded }: { expanded: boolean }) {
 export function PlatformMetricsMobile() {
   const [data, setData] = useState<PlatformData | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch(dataApiUrl('/platform/metrics'));
-        if (!res.ok) return;
-        const d = await res.json();
-        if (!cancelled) setData(d);
-      } catch (error) {
-        reportError(error, { area: 'platform-metrics', action: 'loadMobile' });
-      }
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(dataApiUrl('/platform/metrics'));
+      if (!res.ok) return;
+      setData(await res.json());
+    } catch (error) {
+      reportError(error, { area: 'platform-metrics', action: 'loadMobile' });
     }
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  useReloadOnAnyEvent(load, { throttleMs: 30_000 });
 
   if (!data) return null;
 

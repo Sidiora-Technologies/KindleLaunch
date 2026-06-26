@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -256,6 +258,72 @@ func TestApp_UploadForwardsToMetadata(t *testing.T) {
 	if *metaPath != "/metadata/"+tokenAddr {
 		t.Errorf("metadata path = %q", *metaPath)
 	}
+}
+
+func TestRun_GracefulShutdown(t *testing.T) {
+	_, redisURL := internaltest.NewRedis(t)
+	mc := internaltest.NewMinIO(t, "kl-token")
+	socialSrv := newSocial(t, &socialUpstream{})
+	metaSrv := newMetadata(t, new(string))
+	port := freePort(t)
+
+	for k, v := range map[string]string{
+		"REDIS_URL":            redisURL,
+		"LOG_LEVEL":            "error",
+		"PORT":                 strconv.Itoa(port),
+		"GATEWAY_JWT_SECRET":   "integration-test-signing-secret",
+		"SOCIAL_HTTP_URL":      socialSrv.URL,
+		"SOCIAL_WS_URL":        "ws" + strings.TrimPrefix(socialSrv.URL, "http"),
+		"METADATA_UPLOAD_URL":  metaSrv.URL,
+		"S3_ENDPOINT":          mc.Endpoint,
+		"S3_ACCESS_KEY_ID":     mc.AccessKeyID,
+		"S3_SECRET_ACCESS_KEY": mc.SecretAccessKey,
+		"S3_REGION":            "us-east-1",
+		"METADATA_BUCKET":      "kl-token",
+	} {
+		t.Setenv(k, v)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+
+	// Wait for the server to come up, then trigger graceful shutdown.
+	base := "http://127.0.0.1:" + strconv.Itoa(port)
+	waitListening(t, base+"/health/live")
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run did not return after context cancel")
+	}
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func waitListening(t *testing.T, url string) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		resp, err := http.Get(url)
+		if err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("server did not start listening in time")
 }
 
 // ── small HTTP helpers ───────────────────────────────────────────────────────

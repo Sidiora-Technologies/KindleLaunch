@@ -1,0 +1,127 @@
+/* Sidiora TradingView theme — seamless blend with app background #020611 */
+
+:root {
+    --tv-color-pane-background: #020611;
+    --tv-color-platform-background: #020611;
+
+    /* Top toolbar */
+    --tv-color-toolbar-button-background-hover: rgba(130, 159, 255, 0.06);
+    --tv-color-toolbar-button-background-secondary-hover: rgba(130, 159, 255, 0.06);
+    --tv-color-toolbar-button-background-expanded: #020611;
+    --tv-color-toolbar-button-text: #4B5060;
+    --tv-color-toolbar-button-text-hover: #8A92A9;
+    --tv-color-toolbar-button-text-active: #829FFF;
+    --tv-color-toolbar-button-text-active-hover: #B8C4FF;
+    --tv-color-toolbar-toggle-button-background-active: rgba(130, 159, 255, 0.10) !important;
+    --tv-color-toolbar-toggle-button-background-active-hover: rgba(130, 159, 255, 0.15) !important;
+    --tv-color-toolbar-divider-background: rgba(25, 29, 42, 0.5);
+
+    /* Popups & menus */
+    --tv-color-item-active-text: #829FFF;
+    --tv-color-popup-background: #0B0E18;
+    --tv-color-popup-element-background-hover: rgba(130, 159, 255, 0.08);
+    --tv-color-popup-element-text: #A8AFC1;
+    --tv-color-popup-element-text-hover: #FFFFFF;
+    --tv-color-popup-element-secondary-text: #5F6577;
+}
+
+/* ── iframe body ───────────────────────────────────────── */
+body {
+    background: #020611 !important;
+}
+
+/* ── Top toolbar — blends with chart bg ────────────────── */
+.chart-controls-bar,
+.layout__area--top,
+div[class*="headerWrapper"],
+div[class*="toolbar-"],
+.tv-header,
+.header-chart-panel,
+div[data-name="header-toolbar-chart-panel"],
+div[data-name="header-toolbar-properties"] {
+    background: #020611 !important;
+    border-bottom: 1px solid rgba(25, 29, 42, 0.4) !important;
+}
+
+/* ── Left drawing toolbar ──────────────────────────────── */
+.layout__area--left,
+div[data-name="drawing-toolbar"],
+.tv-side-toolbar {
+    background: #020611 !important;
+    border-right: 1px solid rgba(25, 29, 42, 0.4) !important;
+}
+
+/* ── Bottom toolbar / time axis ────────────────────────── */
+.layout__area--bottom,
+div[class*="bottomWidgetBar"],
+.chart-widget .bottom-widgetbar-content,
+.tv-bottom-toolbar {
+    background: #020611 !important;
+    border-top: none !important;
+}
+
+/* ── Right price scale ─────────────────────────────────── */
+.layout__area--right {
+    background: #020611 !important;
+}
+
+/* ── General widget container ──────────────────────────── */
+.chart-container,
+.chart-widget,
+div[class*="chart-markup-table"],
+.tv-chart-container {
+    background: #020611 !important;
+}
+
+/* ── Tab bar / group headers ───────────────────────────── */
+div[class*="tabsHeader"],
+div[class*="tabs-header"] {
+    background: #020611 !important;
+    border-bottom: 1px solid rgba(25, 29, 42, 0.4) !important;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #191D2A;
+    border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3D4251;
+}
+
+/* ── Loading spinner area ──────────────────────────────── */
+div[class*="loading-screen"],
+.tv-spinner {
+    background: #020611 !important;
+}
+
+/* ── Dialog / popup overlays ───────────────────────────── */
+div[class*="dialog"],
+div[class*="modalDialog"] {
+    background: #0B0E18 !important;
+    border: 1px solid #191D2A !important;
+}
+
+/* ── Separator lines ───────────────────────────────────── */
+div[class*="separator"] {
+    background: rgba(25, 29, 42, 0.4) !important;
+}
+
+/* ── Hide legend/indicator values bar on chart pane ────── */
+div[class*="legendWrapper"],
+div[class*="sourcesWrapper"],
+div[class*="sources"] {
+    opacity: 0.4;
+}
+div[class*="legendWrapper"]:hover,
+div[class*="sourcesWrapper"]:hover,
+div[class*="sources"]:hover {
+    opacity: 1;
+}

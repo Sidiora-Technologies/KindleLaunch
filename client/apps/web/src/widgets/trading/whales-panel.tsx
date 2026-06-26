@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { formatAddress } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { useCallback, useEffect, useState } from 'react';
+import { formatAddress, safeFixed } from '@/utils/format';
+import { dataApiUrl } from '@/core/sdk-config';
+import { useReloadOnPoolEvent } from '@/hooks/market/use-stream-refetch';
+
+const WHALE_THRESHOLD_PCT = 1;
 
 interface WhaleHolder {
   rank: number;
@@ -25,26 +28,53 @@ interface WhalesPanelProps {
   poolAddress: string;
 }
 
+interface BffHolder {
+  holderAddress?: string;
+  address?: string;
+  balance?: string;
+  pctOfSupply?: string | number;
+}
+
 export default function WhalesPanel({ poolAddress }: WhalesPanelProps) {
   const [data, setData] = useState<WhalesResponse | null>(null);
 
-  useEffect(() => {
+  // Push-first: derive whales (holders above the threshold) from the /bff/token
+  // top-10 holders + creator from stats. core/api has no /stats/{pool}/whales route.
+  const load = useCallback(async () => {
     if (!poolAddress) return;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/whales`);
-        if (!res.ok) return;
-        const json = await res.json();
-        if (!cancelled) setData(json);
-      } catch {}
+    try {
+      const bff = await fetch(dataApiUrl(`/bff/token/${poolAddress}`)).then(r => (r.ok ? r.json() : null));
+      if (!bff) return;
+      const creator = String(bff.stats?.creatorAddress ?? '').toLowerCase();
+      const holders: BffHolder[] = Array.isArray(bff.holders) ? bff.holders : [];
+      const whales: WhaleHolder[] = holders
+        .map((h, i) => {
+          const pct = Number(h.pctOfSupply ?? 0);
+          const addr = h.holderAddress ?? h.address ?? '';
+          return {
+            rank: i + 1,
+            holderAddress: addr,
+            balance: h.balance ?? '0',
+            pctOfSupply: pct,
+            pctOfSupplyHuman: `${safeFixed(pct, 2)}%`,
+            isCreator: !!creator && addr.toLowerCase() === creator,
+            lastUpdated: 0,
+          };
+        })
+        .filter((w) => w.pctOfSupply >= WHALE_THRESHOLD_PCT);
+      setData({
+        poolAddress,
+        whaleThresholdPct: WHALE_THRESHOLD_PCT,
+        whaleCount: whales.length,
+        whales,
+      });
+    } catch {
+      /* tolerate transient errors; next push delta re-loads */
     }
-
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
   }, [poolAddress]);
+
+  useEffect(() => { void load(); }, [load]);
+  useReloadOnPoolEvent(poolAddress, load);
 
   if (!data || data.whaleCount === 0) return null;
 

@@ -1,34 +1,41 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { queryKeys } from '@/core/query-keys';
+import { useRefetchOnAnyEvent } from '@/hooks/market/use-stream-refetch';
 import type { RankingsResponse } from '@/widgets/home/types';
+
+// Rankings have no dedicated push channel — ordering shifts as swaps land, so we
+// throttle-invalidate on the global swap firehose and keep a slow poll backstop.
+const BACKSTOP_MS = 90_000;
 
 /**
  * Fetch ranking list for a given category with pagination.
- * Polls when the tab is visible.
+ * Push-first: the global swap firehose throttle-invalidates the list.
  */
 export function useRanking(
   category: string,
   limit: number,
   offset: number,
-  opts?: { refetchInterval?: number; enabled?: boolean },
+  opts?: { enabled?: boolean },
 ) {
-  const interval = opts?.refetchInterval ?? 30_000;
+  const enabled = opts?.enabled ?? true;
+
+  useRefetchOnAnyEvent({ queryKeys: [['ranking', category]], enabled });
 
   return useQuery<RankingsResponse | null>({
     queryKey: queryKeys.ranking(category, limit, offset),
     queryFn: async () => {
       const res = await fetch(
-        `${sdkBaseUrls.ranking}/rankings/${category}?limit=${limit}&offset=${offset}`,
+        dataApiUrl(`/rankings/${category}?limit=${limit}&offset=${offset}`),
       );
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: opts?.enabled ?? true,
+    enabled,
     staleTime: 10_000,
-    refetchInterval: interval,
+    refetchInterval: BACKSTOP_MS,
     refetchIntervalInBackground: false,
   });
 }

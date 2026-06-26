@@ -171,6 +171,19 @@ func TestUpload_RejectsInvalidAddr(t *testing.T) {
 	}
 }
 
+func TestUpload_BadGatewayWhenMetadataDown(t *testing.T) {
+	srv := newMetaUpstream(t, &metaUpstream{})
+	addr := srv.URL
+	srv.Close() // upstream unreachable
+	h := New(Deps{MetadataBaseURL: addr, MaxBytes: 6 << 20, Scan: cleanScan})
+
+	body, ct := buildUpload(t, map[string]string{"wallet": testAddr}, "logo", "a.png", "image/png", []byte("\x89PNG"))
+	rec := serve(t, h, testAddr, body, ct)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+}
+
 func TestUpload_RejectsOversize(t *testing.T) {
 	srv := newMetaUpstream(t, &metaUpstream{})
 	h := New(Deps{MetadataBaseURL: srv.URL, MaxBytes: 64, Scan: cleanScan}) // 64-byte cap

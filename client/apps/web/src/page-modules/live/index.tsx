@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getLiveStreams, type StreamPublic } from '@/core/clients/livestream-api';
 import { formatAddress } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, mediaApiUrl } from '@/core/sdk-config';
 
 function relTime(ts: number | null): string {
   if (!ts) return '';
@@ -35,11 +35,11 @@ export default function LiveModule() {
         if (!cancelled) {
           setStreams(data);
           data.forEach(s => {
-            fetch(`${sdkBaseUrls.stats}/stats/${s.poolAddress}`)
+            fetch(dataApiUrl(`/stats/${s.poolAddress}`))
               .then(r => r.ok ? r.json() : null)
               .then(d => {
                 if (!d?.tokenAddress || cancelled) return;
-                return fetch(`${sdkBaseUrls.metadata}/metadata/${d.tokenAddress}.json`);
+                return fetch(mediaApiUrl(`/metadata/${d.tokenAddress}.json`));
               })
               .then(r => r && r.ok ? r.json() : null)
               .then(d => {

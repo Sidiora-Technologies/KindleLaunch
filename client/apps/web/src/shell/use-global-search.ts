@@ -71,7 +71,7 @@ export function relAge(ts: number): string {
 // ── Hot coins (shares trending cache with BentoHero/TrendingStrip) ───────────
 
 export function useHotCoins(limit = 8): { coins: HotCoin[]; loading: boolean } {
-  const trending = useRanking('trending', limit, 0, { refetchInterval: 60_000 });
+  const trending = useRanking('trending', limit, 0);
 
   const items = trending.data?.items ?? [];
   const pools = useMemo(
@@ -79,7 +79,7 @@ export function useHotCoins(limit = 8): { coins: HotCoin[]; loading: boolean } {
     [items],
   );
 
-  const statsBatch = useTokenStatsBatch(pools, { refetchInterval: 30_000 });
+  const statsBatch = useTokenStatsBatch(pools);
 
   const tokenAddrs = useMemo(() => {
     if (!statsBatch.data) return [];

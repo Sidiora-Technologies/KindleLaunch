@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { formatAddress, formatNumber, safeFixed, from6dec } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
+import { useReloadOnPoolEvent } from '@/hooks/market/use-stream-refetch';
 import { fetchAddressCounters, type AddressCounters } from '@/core/clients/explorer-api';
 
 /**
- * 3.1: Uses backend /stats/:pool/holders instead of Paxscan API.
+ * Push-first: one /bff/token/{pool} snapshot (stats + top holders) re-loaded on
+ * the pool's swap deltas. core/api exposes no /stats/{pool}/holders route — the
+ * top holders ride the BFF aggregate.
  */
 
 interface BackendHolder {
@@ -40,48 +43,46 @@ export default function TopHoldersList({ poolAddress }: TopHoldersListProps) {
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
+  const load = useCallback(async () => {
+    if (!poolAddress) return;
+    try {
+      const bff = await fetch(dataApiUrl(`/bff/token/${poolAddress}`)).then(r => (r.ok ? r.json() : null));
+      const statsRes = bff?.stats ?? null;
+      const holdersRes: RawHolder[] = Array.isArray(bff?.holders) ? bff.holders : [];
+
+      if (statsRes) {
+        setHolderCount(statsRes.holderCount ?? 0);
+        setTop10Conc(Number(statsRes.top10Concentration ?? 0));
+        setCreatorPct(Number(statsRes.creatorHoldingsPct ?? 0));
+        setTransferCount(statsRes.transferCount ?? 0);
+        if (statsRes.creatorAddress) setCreatorAddress(statsRes.creatorAddress);
+      }
+
+      setHolders(
+        holdersRes.map((h: RawHolder) => ({
+          address: h.holderAddress ?? h.address ?? '',
+          isContract: h.isContract ?? false,
+          balance: h.balance,
+          balanceFormatted: from6dec(h.balance),
+          pctOfSupply: Number(h.pctOfSupply ?? 0),
+        })),
+      );
+    } catch {
+      /* tolerate transient errors; backstop event will re-load */
+    } finally {
+      setLoading(false);
+    }
+  }, [poolAddress]);
+
+  // Initial snapshot.
   useEffect(() => {
     if (!poolAddress) return;
-    let cancelled = false;
     setLoading(true);
+    void load();
+  }, [poolAddress, load]);
 
-    async function load() {
-      try {
-        const [statsRes, holdersRes] = await Promise.all([
-          fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`).then(r => r.ok ? r.json() : null),
-          fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/holders?limit=50`).then(r => r.ok ? r.json() : null),
-        ]);
-
-        if (cancelled) return;
-
-        if (statsRes) {
-          setHolderCount(statsRes.holderCount ?? 0);
-          setTop10Conc(statsRes.top10Concentration ?? 0);
-          setCreatorPct(statsRes.creatorHoldingsPct ?? 0);
-          setTransferCount(statsRes.transferCount ?? 0);
-          if (statsRes.creatorAddress) setCreatorAddress(statsRes.creatorAddress);
-        }
-
-        if (holdersRes?.holders) {
-          setHolders(
-            holdersRes.holders.map((h: RawHolder) => ({
-              address: h.holderAddress ?? h.address ?? '',
-              isContract: h.isContract ?? false,
-              balance: h.balance,
-              balanceFormatted: from6dec(h.balance),
-              pctOfSupply: Number(h.pctOfSupply ?? 0),
-            }))
-          );
-        }
-      } catch {} finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [poolAddress]);
+  // Re-load on the pool's live deltas (push replaces the 30s timer).
+  useReloadOnPoolEvent(poolAddress, load);
 
   useEffect(() => {
     if (!creatorAddress) return;

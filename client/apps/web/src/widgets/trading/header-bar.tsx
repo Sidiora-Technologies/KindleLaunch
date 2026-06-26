@@ -34,7 +34,7 @@ export default function HeaderBar({ poolAddress }: HeaderBarProps) {
   const { toggle, check } = useWatchlist();
   const starred = check(poolAddress);
 
-  const { data: stats } = useTokenStats(poolAddress, { refetchInterval: 30_000 });
+  const { data: stats } = useTokenStats(poolAddress);
   const tokenAddr = stats?.tokenAddress || poolAddress;
   const { data: meta } = useTokenMetadata(tokenAddr);
 

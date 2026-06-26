@@ -36,7 +36,7 @@ const FLASH_DURATION_MS = 2500;
  * to the front.
  */
 export function useTrendingStrip(limit = 8): UseTrendingStripResult {
-  const trendingQuery = useRanking('trending', limit, 0, { refetchInterval: 60_000 });
+  const trendingQuery = useRanking('trending', limit, 0);
 
   const items = trendingQuery.data?.items ?? [];
   const pools = useMemo(
@@ -44,9 +44,9 @@ export function useTrendingStrip(limit = 8): UseTrendingStripResult {
     [items],
   );
 
-  // 10s polling here makes the BUY flashes responsive — same query key as BentoHero
-  // means stats refresh shares the cache where intervals overlap.
-  const statsBatch = useTokenStatsBatch(pools, { refetchInterval: 10_000 });
+  // BUY flashes are now driven by push: the swap firehose throttle-invalidates the
+  // shared batch-stats key (same key as BentoHero, so the refresh is shared).
+  const statsBatch = useTokenStatsBatch(pools);
 
   const tokenAddrs = useMemo(() => {
     if (!statsBatch.data) return [];

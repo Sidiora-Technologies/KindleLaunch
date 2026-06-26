@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { formatAddress, safeFixed } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
+import { useReloadOnPoolEvent } from '@/hooks/market/use-stream-refetch';
 import { VirtualList } from '@/ui/common/bounded-list';
 
 interface TopHoldersFullListProps {
@@ -35,30 +36,59 @@ function bpsToPct(bps: number | string): number {
   return Number(bps) / 100;
 }
 
+interface BffHolder {
+  holderAddress?: string;
+  address?: string;
+  pctOfSupply?: string | number;
+}
+
 export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListProps) {
   const [dist, setDist] = useState<HolderDistribution | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  useEffect(() => {
+  // Push-first: derive the distribution from the /bff/token aggregate (stats +
+  // top-10 holders). core/api exposes no /stats/{pool}/holders/distribution
+  // route, so bracket histogram + top20/top50 percentiles aren't available and
+  // are intentionally omitted rather than fabricated.
+  const load = useCallback(async () => {
     if (!poolAddress) return;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/holders/distribution`);
-        if (res.ok && !cancelled) setDist(await res.json());
-      } catch {}
+    try {
+      const bff = await fetch(dataApiUrl(`/bff/token/${poolAddress}`)).then(r => (r.ok ? r.json() : null));
+      if (!bff) return;
+      const stats = bff.stats ?? {};
+      const holders: BffHolder[] = Array.isArray(bff.holders) ? bff.holders : [];
+      const top10: WalletEntry[] = holders.map((h, i) => ({
+        address: h.holderAddress ?? h.address ?? '',
+        // store pct as bps so the existing bpsToPct(/100) render stays correct
+        pctBps: Number(h.pctOfSupply ?? 0) * 100,
+        rank: i + 1,
+      }));
+      setDist({
+        totalHolders: Number(stats.holderCount ?? top10.length),
+        brackets: [],
+        top10,
+        top10Pct: String(Number(stats.top10Concentration ?? 0) * 100),
+        top20Pct: '',
+        top50Pct: '',
+        walletMap: top10,
+      });
+    } catch {
+      /* tolerate transient errors; next push delta re-loads */
     }
-
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
   }, [poolAddress]);
+
+  useEffect(() => { void load(); }, [load]);
+  useReloadOnPoolEvent(poolAddress, load);
 
   if (!dist) return null;
 
   const holders = showAll ? dist.walletMap : dist.top10;
   const maxBracketBps = Math.max(...dist.brackets.map(b => b.totalBalancePctBps), 1);
+  const metrics = [
+    { label: 'Top 10', val: bpsToPct(Number(dist.top10Pct)) },
+    ...(dist.top20Pct ? [{ label: 'Top 20', val: bpsToPct(Number(dist.top20Pct)) }] : []),
+    ...(dist.top50Pct ? [{ label: 'Top 50', val: bpsToPct(Number(dist.top50Pct)) }] : []),
+  ];
 
   return (
     <div className="border border-dark-gray rounded-lg overflow-hidden">
@@ -72,11 +102,7 @@ export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListPr
 
       {/* Concentration metrics */}
       <div className="flex items-center gap-4 px-3 py-2 border-b border-dark-gray">
-        {[
-          { label: 'Top 10', val: bpsToPct(Number(dist.top10Pct)) },
-          { label: 'Top 20', val: bpsToPct(Number(dist.top20Pct)) },
-          { label: 'Top 50', val: bpsToPct(Number(dist.top50Pct)) },
-        ].map(m => (
+        {metrics.map(m => (
           <div key={m.label} className="flex flex-col items-center">
             <span className="text-size-8 text-dark-disabled leading-none">{m.label}</span>
             <span className="text-size-11 font-manrope-bold text-white leading-none mt-0.5">{safeFixed(m.val, 1)}%</span>

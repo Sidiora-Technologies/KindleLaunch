@@ -1,9 +1,12 @@
 'use client';
 
+import { useCallback, useRef } from 'react';
 import { create } from 'zustand';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, mediaApiUrl } from '@/core/sdk-config';
 import { fetchTokenHolders, fetchTokenCounters } from '@/core/clients/paxscan';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
+import { usePoolEvents } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
 
 export interface PoolStats {
   poolAddress: string;
@@ -102,10 +105,11 @@ interface TerminalState {
   statsLoading: boolean;
   fetchStats: () => Promise<void>;
 
-  // Transactions
+  // Transactions — push-fed from the swap stream (core/api exposes no
+  // recent-trades REST snapshot), newest-first, capped.
   transactions: PoolTransaction[];
   txLoading: boolean;
-  fetchTransactions: () => Promise<void>;
+  addTrade: (tx: PoolTransaction) => void;
 
   // Holders (from Paxscan)
   holders: PoolHolder[];
@@ -133,10 +137,9 @@ interface TerminalState {
   batchMetadata: Record<string, TokenMetadata>;
   fetchBatchMetadata: (tokens: string[]) => Promise<void>;
 
-  // Polling control
-  startPolling: () => void;
-  stopPolling: () => void;
-  _pollInterval: ReturnType<typeof setInterval> | null;
+  // Push-driven live refresh: re-validate the snapshot on a live delta. Throttled
+  // by the caller (useTerminalLiveSync) so a swap burst can't melt the endpoints.
+  refreshLive: () => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -156,13 +159,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   rankingLoading: false,
   batchStats: {},
   batchMetadata: {},
-  _pollInterval: null,
 
   selectPool: (pool: string) => {
     set({ selectedPool: pool, stats: null, transactions: [], holders: [], holderCount: 0, derivedTop10Conc: 0, derivedCreatorPct: 0, metadata: null });
-    // Fetch all data for new pool
+    // Snapshot the new pool; live trades then arrive via the swap stream.
     get().fetchStats();
-    get().fetchTransactions();
     get().fetchHolders();
     get().fetchMetadata();
   },
@@ -172,7 +173,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     if (!pool) return;
     set({ statsLoading: true });
     try {
-      const res = await fetch(`${sdkBaseUrls.stats}/stats/${pool}`);
+      const res = await fetch(dataApiUrl(`/stats/${pool}`));
       if (res.ok) {
         const data = await res.json();
         set({ stats: data });
@@ -184,21 +185,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
   },
 
-  fetchTransactions: async () => {
-    const pool = get().selectedPool;
-    if (!pool) return;
-    set({ txLoading: true });
-    try {
-      const res = await fetch(`${sdkBaseUrls.stats}/stats/${pool}/transactions?limit=50`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ transactions: data.transactions || [] });
-      }
-    } catch (e) {
-      console.error('Failed to fetch transactions:', e);
-    } finally {
-      set({ txLoading: false });
-    }
+  addTrade: (tx: PoolTransaction) => {
+    set((state) => {
+      if (state.transactions.some((t) => t.id === tx.id)) return state;
+      return { transactions: [tx, ...state.transactions].slice(0, 50) };
+    });
   },
 
   fetchHolders: async () => {
@@ -252,13 +243,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set({ metadataLoading: true });
     try {
       const tokenAddr = stats?.tokenAddress || pool;
-      const res = await fetch(`${sdkBaseUrls.metadata}/metadata/${tokenAddr}.json`);
+      const res = await fetch(mediaApiUrl(`/metadata/${tokenAddr}.json`));
       if (res.ok) {
         const data = await res.json();
         set({ metadata: data });
       } else {
         // Try legacy endpoint
-        const res2 = await fetch(`${sdkBaseUrls.metadata}/metadata/${tokenAddr}`);
+        const res2 = await fetch(mediaApiUrl(`/metadata/${tokenAddr}`));
         if (res2.ok) {
           const data = await res2.json();
           set({ metadata: { token_address: tokenAddr, images: data.images } });
@@ -274,7 +265,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   fetchRankings: async () => {
     set({ rankingLoading: true });
     try {
-      const res = await fetch(`${sdkBaseUrls.ranking}/rankings/trending?limit=20`);
+      const res = await fetch(dataApiUrl('/rankings/trending?limit=20'));
       if (res.ok) {
         const data = await res.json();
         const items: RankingItem[] = data.items || [];
@@ -295,7 +286,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   fetchBatchStats: async (pools: string[]) => {
     try {
-      const res = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${pools.join(',')}`);
+      const res = await fetch(dataApiUrl(`/stats/batch?pools=${pools.join(',')}`));
       if (res.ok) {
         const data = await res.json();
         set({ batchStats: data });
@@ -328,22 +319,83 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set((state) => ({ batchMetadata: { ...state.batchMetadata, ...results } }));
   },
 
-  startPolling: () => {
-    get().stopPolling();
-    // Refresh stats + transactions + holders every 10s
-    const interval = setInterval(() => {
-      get().fetchStats();
-      get().fetchTransactions();
-      get().fetchHolders();
-    }, 10_000);
-    set({ _pollInterval: interval });
-  },
-
-  stopPolling: () => {
-    const interval = get()._pollInterval;
-    if (interval) {
-      clearInterval(interval);
-      set({ _pollInterval: null });
-    }
+  refreshLive: () => {
+    // Re-validate the snapshot data that the push stream can't carry directly
+    // (stats aggregates + Paxscan-sourced holders). Live trades are appended by
+    // addTrade straight off the stream, so they are not re-fetched here.
+    get().fetchStats();
+    get().fetchHolders();
   },
 }));
+
+// ── Live sync (push-first replacement for the old 10s poll) ──────────────────
+
+function str(v: unknown): string {
+  return v === undefined || v === null ? '' : String(v);
+}
+
+const REFRESH_THROTTLE_MS = 5_000;
+
+/**
+ * Drives the terminal store from the multiplexed data stream for the currently
+ * selected pool: appends live trades off `indexer:swap`, and throttle-refreshes
+ * the stats + holders snapshot on swap / pool_state_updated deltas. Mount once
+ * (e.g. in the terminal Dashboard) for the selected pool's lifetime.
+ */
+export function useTerminalLiveSync(poolAddress: string | null | undefined): void {
+  const addTrade = useTerminalStore((s) => s.addTrade);
+  const refreshLive = useTerminalStore((s) => s.refreshLive);
+
+  const lastRefresh = useRef(0);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const throttledRefresh = useCallback(() => {
+    const now = Date.now();
+    const elapsed = now - lastRefresh.current;
+    if (elapsed >= REFRESH_THROTTLE_MS) {
+      lastRefresh.current = now;
+      refreshLive();
+      return;
+    }
+    if (refreshTimer.current) return;
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      lastRefresh.current = Date.now();
+      refreshLive();
+    }, REFRESH_THROTTLE_MS - elapsed);
+  }, [refreshLive]);
+
+  const onEvent = useCallback(
+    (event: DataEvent) => {
+      if (event.type === 'swap' || event.channel === DataChannels.Swap) {
+        const env = (event.data ?? {}) as Record<string, unknown>;
+        const args = ((env.args as Record<string, unknown>) ?? env) as Record<string, unknown>;
+        const pool = str(args.poolAddress ?? env.poolAddress) || (poolAddress ?? '');
+        const txHash = str(env.txHash ?? args.txHash);
+        const logIndex = str(env.logIndex ?? args.logIndex);
+        const ts = Number(args.timestamp ?? env.blockTimestamp ?? args.blockTimestamp ?? 0);
+        addTrade({
+          id: txHash ? `${txHash}-${logIndex}` : `${pool}-${ts}-${Math.random().toString(36).slice(2, 8)}`,
+          poolAddress: pool,
+          sender: str(args.sender),
+          isBuy: Boolean(args.isBuy),
+          amountIn: str(args.amountIn),
+          amountOut: str(args.amountOut),
+          price: str(args.price),
+          fee: str(args.fee),
+          blockTimestamp: ts,
+          txHash,
+        });
+      }
+      throttledRefresh();
+    },
+    [addTrade, throttledRefresh, poolAddress],
+  );
+
+  usePoolEvents(
+    poolAddress,
+    [DataChannels.Swap, DataChannels.PoolStateUpdated],
+    onEvent,
+    !!poolAddress,
+  );
+}
