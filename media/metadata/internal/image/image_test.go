@@ -16,11 +16,11 @@ func TestAllowedMimeAndExt(t *testing.T) {
 		{"image/png", true, "png"},
 		{"image/svg+xml", true, "svg"},
 		{"image/jpeg", true, "jpg"},
-		{"IMAGE/PNG", true, "png"},      // case-insensitive
-		{"  image/png  ", true, "png"},  // trimmed
-		{"image/gif", false, ""},        // not allowed
-		{"application/pdf", false, ""},  // not allowed
-		{"", false, ""},                 // empty
+		{"IMAGE/PNG", true, "png"},     // case-insensitive
+		{"  image/png  ", true, "png"}, // trimmed
+		{"image/gif", false, ""},       // not allowed
+		{"application/pdf", false, ""}, // not allowed
+		{"", false, ""},                // empty
 	}
 	for _, tc := range cases {
 		t.Run(tc.mime, func(t *testing.T) {

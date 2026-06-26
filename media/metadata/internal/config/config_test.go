@@ -33,15 +33,15 @@ func apply(t *testing.T, env map[string]string) {
 // baseEnv is a complete, valid environment; individual tests mutate one key.
 func baseEnv() map[string]string {
 	return map[string]string{
-		"DATABASE_URL":         "postgresql://u:p@localhost:5432/db",
-		"REDIS_URL":            "redis://localhost:6379",
-		"S3_ENDPOINT":          "https://acct.r2.cloudflarestorage.com",
-		"S3_BUCKET":            "token-assets",
-		"S3_ACCESS_KEY_ID":     "ak",
-		"S3_SECRET_ACCESS_KEY": "sk",
-		"LOG_LEVEL":            "info",
-		"PORT":                 "5056",
-		"MAX_LOGO_SIZE_BYTES":  "2097152",
+		"DATABASE_URL":          "postgresql://u:p@localhost:5432/db",
+		"REDIS_URL":             "redis://localhost:6379",
+		"S3_ENDPOINT":           "https://acct.r2.cloudflarestorage.com",
+		"S3_BUCKET":             "token-assets",
+		"S3_ACCESS_KEY_ID":      "ak",
+		"S3_SECRET_ACCESS_KEY":  "sk",
+		"LOG_LEVEL":             "info",
+		"PORT":                  "5056",
+		"MAX_LOGO_SIZE_BYTES":   "2097152",
 		"MAX_BANNER_SIZE_BYTES": "5242880",
 	}
 }

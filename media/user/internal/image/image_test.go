@@ -15,8 +15,8 @@ func TestAllowedMime(t *testing.T) {
 		{"image/png", true},
 		{"image/svg+xml", true},
 		{"image/jpeg", true},
-		{"IMAGE/PNG", true},          // case-insensitive
-		{"  image/jpeg  ", true},     // trimmed
+		{"IMAGE/PNG", true},      // case-insensitive
+		{"  image/jpeg  ", true}, // trimmed
 		{"image/gif", false},
 		{"application/json", false},
 		{"", false},

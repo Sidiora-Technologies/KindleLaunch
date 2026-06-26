@@ -116,12 +116,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { service: core/api,            bin: apid,     image: kindlelaunch-core-api }
-          - { service: core/indexer,        bin: indexerd, image: kindlelaunch-core-indexer }
-          - { service: core/pnl-tracker,    bin: pnld,     image: kindlelaunch-core-pnl-tracker }
-          - { service: core/ranking-algo,   bin: rankingd, image: kindlelaunch-core-ranking-algo }
-          - { service: core/stats-workers,  bin: statsd,   image: kindlelaunch-core-stats-workers }
-          - { service: core/trading-charts, bin: chartsd,  image: kindlelaunch-core-trading-charts }
+          - { service: core/api,            bin: apid,           image: kindlelaunch-core-api }
+          - { service: core/indexer,        bin: indexerd,       image: kindlelaunch-core-indexer }
+          - { service: core/pnl-tracker,    bin: pnld,           image: kindlelaunch-core-pnl-tracker }
+          - { service: core/ranking-algo,   bin: rankingd,       image: kindlelaunch-core-ranking-algo }
+          - { service: core/stats-workers,  bin: statsd,         image: kindlelaunch-core-stats-workers }
+          - { service: core/trading-charts, bin: chartsd,        image: kindlelaunch-core-trading-charts }
+          - { service: media/gateway,       bin: mediagatewayd,  image: kindlelaunch-media-gateway }
+          - { service: media/livestream,    bin: livestreamd,    image: kindlelaunch-media-livestream }
+          - { service: media/metadata,      bin: metadatad,      image: kindlelaunch-media-metadata }
+          - { service: media/social,        bin: sociald,        image: kindlelaunch-media-social }
+          - { service: media/user,          bin: userd,          image: kindlelaunch-media-user }
     steps:
       - uses: actions/checkout@v5
 

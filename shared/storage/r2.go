@@ -181,7 +181,7 @@ func (c *Client) Get(ctx context.Context, key string) (*Object, error) {
 
 // GetBytes reads the entire object at key into memory (intended for small image
 // assets). A missing key yields ErrNotFound.
-func (c *Client) GetBytes(ctx context.Context, key string) ([]byte, string, error) {
+func (c *Client) GetBytes(ctx context.Context, key string) (content []byte, contentType string, err error) {
 	obj, err := c.Get(ctx, key)
 	if err != nil {
 		return nil, "", err

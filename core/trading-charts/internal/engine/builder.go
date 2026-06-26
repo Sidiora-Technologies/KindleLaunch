@@ -414,8 +414,8 @@ type dedupCache struct {
 	now     func() time.Time
 }
 
-func newDedupCache(ttl time.Duration, max int) *dedupCache {
-	return &dedupCache{entries: make(map[string]int64), ttl: ttl, max: max, now: time.Now}
+func newDedupCache(ttl time.Duration, maxEntries int) *dedupCache {
+	return &dedupCache{entries: make(map[string]int64), ttl: ttl, max: maxEntries, now: time.Now}
 }
 
 // has reports whether key is present and unexpired, pruning it if expired.

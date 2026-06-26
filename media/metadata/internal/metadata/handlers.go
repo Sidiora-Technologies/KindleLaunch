@@ -82,18 +82,18 @@ type Deps struct {
 
 // Handlers serves the metadata routes.
 type Handlers struct {
-	q           sqlcdb.Querier
-	redis       *goredis.Client
-	store       ObjectStore
-	publicURL   string
-	maxLogo     int64
-	maxBanner   int64
-	logger      *slog.Logger
-	scan        Scanner
-	clock       func() time.Time
-	poolTries   int
-	poolDelay   time.Duration
-	sleep       func(time.Duration)
+	q         sqlcdb.Querier
+	redis     *goredis.Client
+	store     ObjectStore
+	publicURL string
+	maxLogo   int64
+	maxBanner int64
+	logger    *slog.Logger
+	scan      Scanner
+	clock     func() time.Time
+	poolTries int
+	poolDelay time.Duration
+	sleep     func(time.Duration)
 }
 
 // New constructs Handlers, applying defaults for optional dependencies.

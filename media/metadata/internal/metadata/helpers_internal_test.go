@@ -32,10 +32,10 @@ func TestStripExt(t *testing.T) {
 
 func TestExtFromKey(t *testing.T) {
 	cases := map[string]string{
-		"logos/logo-0x.png":   "png",
+		"logos/logo-0x.png":      "png",
 		"banners/banner-0x.webp": "webp",
-		"noext":               "png", // default
-		"trailingdot.":        "png", // default (nothing after dot)
+		"noext":                  "png", // default
+		"trailingdot.":           "png", // default (nothing after dot)
 	}
 	for in, want := range cases {
 		if got := extFromKey(in); got != want {
