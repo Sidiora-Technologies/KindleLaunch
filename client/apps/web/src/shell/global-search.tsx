@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
 import { reportError } from '@/core/report-error';
 import {
   useHotCoins,
@@ -71,7 +71,7 @@ export default function GlobalSearch() {
     let navAddr = args.poolAddress || '';
     if (!navAddr && args.tokenAddress) {
       try {
-        const res = await fetch(`${sdkBaseUrls.metadata}/metadata/${args.tokenAddress}.json`);
+        const res = await fetch(metadataApiUrl(`/metadata/${args.tokenAddress}`));
         if (res.ok) {
           const meta = await res.json();
           if (meta?.pool_address) navAddr = meta.pool_address;

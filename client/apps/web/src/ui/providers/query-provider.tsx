@@ -8,18 +8,22 @@ import { httpClient as metadataHttp } from 'metadata-sdk';
 import { httpClient as rankingHttp } from 'ranking-algo-sdk';
 import { httpClient as statsHttp } from 'stats-sdk';
 import { httpClient as usersHttp } from 'users-sdk';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl, userApiUrl } from '@/core/sdk-config';
 import { cachePolicy } from '@/core/cache-policy';
 
 let sdksConfigured = false;
 function configureSDKs() {
   if (sdksConfigured) return;
-  candlesHttp.configure({ baseUrl: sdkBaseUrls.candles });
-  indexerHttp.configure({ baseUrl: sdkBaseUrls.indexer });
-  metadataHttp.configure({ baseUrl: sdkBaseUrls.metadata });
-  rankingHttp.configure({ baseUrl: sdkBaseUrls.ranking });
-  statsHttp.configure({ baseUrl: sdkBaseUrls.stats });
-  usersHttp.configure({ baseUrl: sdkBaseUrls.users });
+  // Each SDK appends its own resource path (e.g. `/history`, `/metadata/{addr}`,
+  // `/users/{addr}`), so baseUrl is the HOST ROOT (plus the `/udf` segment the
+  // candles SDK does NOT add). Pointing at host roots fixes the legacy doubled
+  // `/metadata/metadata` and `/users/users` 404s.
+  candlesHttp.configure({ baseUrl: dataApiUrl('/udf') });
+  indexerHttp.configure({ baseUrl: dataApiUrl('') });
+  metadataHttp.configure({ baseUrl: metadataApiUrl('') });
+  rankingHttp.configure({ baseUrl: dataApiUrl('') });
+  statsHttp.configure({ baseUrl: dataApiUrl('') });
+  usersHttp.configure({ baseUrl: userApiUrl('') });
   sdksConfigured = true;
 }
 

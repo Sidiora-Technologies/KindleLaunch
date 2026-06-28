@@ -232,6 +232,10 @@ func buildFilter(fixedChannel string, r *http.Request) broker.Filter {
 	return broker.Filter{Channels: channels, Pools: pools}
 }
 
+// splitSet parses the comma-separated `pools` query into a set, canonicalising
+// each pool to lowercase so the broker's exact-match filter matches the
+// lowercased pool the transform routes on regardless of the casing the client
+// sent (Bug 3 / 6a).
 func splitSet(raw string) map[string]struct{} {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -239,7 +243,7 @@ func splitSet(raw string) map[string]struct{} {
 	}
 	out := make(map[string]struct{})
 	for _, p := range strings.Split(raw, ",") {
-		if p = strings.TrimSpace(p); p != "" {
+		if p = strings.ToLower(strings.TrimSpace(p)); p != "" {
 			out[p] = struct{}{}
 		}
 	}

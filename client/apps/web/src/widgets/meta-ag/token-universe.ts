@@ -10,7 +10,7 @@
  * always 6-dec (factory default), but USDL/WPAX live on the meta-ag
  * vault and use 18-dec.
  */
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
 import {
   META_AG_USDL_ADDRESS,
@@ -77,7 +77,7 @@ export async function loadMetaAgTokens(
 
   try {
     const rankingRes = await fetch(
-      `${sdkBaseUrls.ranking}/rankings/trending?limit=200&offset=0`,
+      dataApiUrl('/rankings/trending?limit=200&offset=0'),
       { signal },
     );
     if (!rankingRes.ok) return tokens;
@@ -87,7 +87,7 @@ export async function loadMetaAgTokens(
 
     const poolAddrs = items.map((i) => i.poolAddress);
     const statsRes = await fetch(
-      `${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`,
+      dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`),
       { signal },
     );
     let statsMap: Record<string, PoolStats> = {};

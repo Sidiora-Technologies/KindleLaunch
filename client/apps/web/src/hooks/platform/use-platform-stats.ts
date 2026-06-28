@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dataApiUrl } from '@/core/sdk-config';
 import { queryKeys } from '@/core/query-keys';
 import { useRefetchOnAnyEvent } from '@/hooks/market/use-stream-refetch';
+import { DataChannels } from '@/core/realtime/data-stream';
 
 export interface PlatformStats {
   totalVolume24h: string;
@@ -12,15 +13,14 @@ export interface PlatformStats {
   uniqueTraders24h: number;
 }
 
-// Platform metrics are precomputed server-side (~25s) and aggregate everything,
-// so they move slowly: ride the global firehose with a wide throttle + slow poll.
-const BACKSTOP_MS = 90_000;
-
 export function usePlatformStats(opts?: { enabled?: boolean }) {
   const enabled = opts?.enabled ?? true;
 
+  // Push-first: stats-workers publishes platform_update after each precompute;
+  // re-validate on it (no background poll).
   useRefetchOnAnyEvent({
     queryKeys: [queryKeys.platformStats()],
+    channels: [DataChannels.PlatformUpdate],
     throttleMs: 30_000,
     enabled,
   });
@@ -34,7 +34,5 @@ export function usePlatformStats(opts?: { enabled?: boolean }) {
     },
     enabled,
     staleTime: 30_000,
-    refetchInterval: BACKSTOP_MS,
-    refetchIntervalInBackground: false,
   });
 }

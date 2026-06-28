@@ -11,7 +11,7 @@
  */
 
 import { getAddress, isAddress } from 'viem';
-import { sdkBaseUrls } from '../sdk-config';
+import { pnlApiUrl } from '../sdk-config';
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -215,10 +215,8 @@ export function ca(addr: string | undefined | null): string {
 // API client
 // ═══════════════════════════════════════════════════════════
 
-const base = () => sdkBaseUrls.pnl;
-
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${base()}${path}`, {
+  const res = await fetch(pnlApiUrl(path), {
     ...init,
     headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
   });

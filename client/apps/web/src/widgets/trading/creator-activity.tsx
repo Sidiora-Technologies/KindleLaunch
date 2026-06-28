@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatAddress, formatPrice } from '@/utils/format';
+import { dataApiUrl } from '@/core/sdk-config';
 import { useTokenStats } from '@/hooks/market/use-token-stats';
 import { usePoolEvents } from '@/core/realtime/use-data-stream';
 import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
@@ -48,14 +49,57 @@ function str(v: unknown): string {
 
 export default function CreatorActivity({ poolAddress }: CreatorActivityProps) {
   const [showTxs, setShowTxs] = useState(false);
-  const [creatorTxs, setCreatorTxs] = useState<Transaction[]>([]);
+  const [snapshotTxs, setSnapshotTxs] = useState<Transaction[]>([]);
+  const [baseSummary, setBaseSummary] = useState<CreatorSummary | null>(null);
+  const [liveTxs, setLiveTxs] = useState<Transaction[]>([]);
+  const [holdingsPctNum, setHoldingsPctNum] = useState<number | null>(null);
   const seen = useRef<Set<string>>(new Set());
 
   // Creator identity + current holdings come from the push-first pool stats.
-  // core/api exposes no /stats/{pool}/creator-activity route, so the buy/sell
-  // history is accumulated live from the swap stream (creator == sender).
   const { data: stats } = useTokenStats(poolAddress);
   const creatorAddress = stats?.creatorAddress ?? null;
+
+  // Seed the full historical buy/sell summary + transactions once from the
+  // core/api creator-activity route so counts are real (not 0/0); live swaps
+  // then increment in real time on top of this baseline (Bug 5).
+  useEffect(() => {
+    if (!poolAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(dataApiUrl(`/bff/token/${poolAddress}/creator-activity`));
+        if (!res.ok) throw new Error(`creator-activity ${res.status}`);
+        const json = (await res.json()) as {
+          summary?: CreatorSummary | null;
+          transactions?: Array<Partial<Transaction>>;
+          currentHoldingsPct?: number;
+        };
+        if (cancelled) return;
+        const txs: Transaction[] = (json.transactions ?? []).map((t) => ({
+          id: str(t.id),
+          poolAddress,
+          sender: str(t.sender),
+          isBuy: Boolean(t.isBuy),
+          amountIn: str(t.amountIn),
+          amountOut: str(t.amountOut),
+          price: str(t.price),
+          fee: str(t.fee),
+          blockTimestamp: Number(t.blockTimestamp ?? 0),
+          txHash: str(t.txHash),
+        }));
+        seen.current = new Set(txs.map((t) => t.id));
+        setSnapshotTxs(txs);
+        setBaseSummary(json.summary ?? null);
+        setHoldingsPctNum(typeof json.currentHoldingsPct === 'number' ? json.currentHoldingsPct : null);
+        setLiveTxs([]);
+      } catch {
+        // Snapshot is best-effort; live deltas still accumulate below.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [poolAddress]);
 
   const onSwap = useCallback(
     (event: DataEvent) => {
@@ -84,34 +128,45 @@ export default function CreatorActivity({ poolAddress }: CreatorActivityProps) {
         blockTimestamp: ts,
         txHash,
       };
-      setCreatorTxs((prev) => {
-        const next = [tx, ...prev].slice(0, MAX_CREATOR_TXS);
-        if (seen.current.size > MAX_CREATOR_TXS * 4) seen.current = new Set(next.map((t) => t.id));
-        return next;
-      });
+      setLiveTxs((prev) => [tx, ...prev].slice(0, MAX_CREATOR_TXS));
     },
     [creatorAddress, poolAddress],
   );
 
   usePoolEvents(poolAddress, [DataChannels.Swap], onSwap, !!poolAddress && !!creatorAddress);
 
+  // Combined summary: the historical baseline from the snapshot plus live deltas
+  // not present in it (token totals folded with BigInt, never float).
   const summary = useMemo<CreatorSummary>(() => {
-    const buyCount = creatorTxs.filter((t) => t.isBuy).length;
-    const sellCount = creatorTxs.length - buyCount;
+    let buyCount = baseSummary?.buyCount ?? 0;
+    let sellCount = baseSummary?.sellCount ?? 0;
+    let bought = BigInt(baseSummary?.totalBoughtTokens || '0');
+    let sold = BigInt(baseSummary?.totalSoldTokens || '0');
+    for (const t of liveTxs) {
+      if (t.isBuy) {
+        buyCount += 1;
+        try { bought += BigInt(t.amountOut || '0'); } catch { /* skip non-numeric */ }
+      } else {
+        sellCount += 1;
+        try { sold += BigInt(t.amountIn || '0'); } catch { /* skip non-numeric */ }
+      }
+    }
     return {
       buyCount,
       sellCount,
       hasSold: sellCount > 0,
-      totalBoughtTokens: '0',
-      totalSoldTokens: '0',
-      netTokenBalance: '0',
+      totalBoughtTokens: bought.toString(),
+      totalSoldTokens: sold.toString(),
+      netTokenBalance: (bought - sold).toString(),
     };
-  }, [creatorTxs]);
+  }, [baseSummary, liveTxs]);
 
   if (!creatorAddress) return null;
 
-  const holdingsPct = stats?.creatorHoldingsPct ? `${stats.creatorHoldingsPct}%` : '—';
-  const txs = creatorTxs;
+  // Prefer the creator-activity route's human-percent holdings (single-point
+  // bps->percent conversion); fall back to '—' when unavailable (Bug 5).
+  const holdingsPct = holdingsPctNum !== null ? `${holdingsPctNum}%` : '—';
+  const txs = [...liveTxs, ...snapshotTxs];
   const displayTxs = showTxs ? txs : txs.slice(0, 5);
 
   return (

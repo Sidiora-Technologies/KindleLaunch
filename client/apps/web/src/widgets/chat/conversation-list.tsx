@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import Link from 'next/link';
 import { getDmConversations, type DmConversation } from '@/core/clients/chat-api';
-import { ensureAuth } from '@/core/clients/chat-auth';
 import { formatAddress } from '@/utils/format';
-import { sdkBaseUrls, getUserAvatarUrl } from '@/core/sdk-config';
+import { userApiUrl, getUserAvatarUrl } from '@/core/sdk-config';
 
 function relTime(ts: number | null): string {
   if (!ts) return '';
@@ -24,7 +23,6 @@ interface PeerMeta {
 
 export default function ConversationList() {
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
   const [conversations, setConversations] = useState<DmConversation[]>([]);
   const [peerMeta, setPeerMeta] = useState<Record<string, PeerMeta>>({});
   const [loading, setLoading] = useState(true);
@@ -36,15 +34,13 @@ export default function ConversationList() {
 
     async function load() {
       try {
-        const auth = await ensureAuth(address!, signMessageAsync);
-        if (!auth || cancelled) return;
-        const convos = await getDmConversations(auth);
+        const convos = await getDmConversations();
         if (!cancelled) {
           setConversations(convos);
           // Fetch peer display names
           const peers = convos.map(c => c.peer).filter(Boolean);
           peers.forEach(peer => {
-            fetch(`${sdkBaseUrls.users}/users/${peer}`)
+            fetch(userApiUrl(`/users/${peer}`))
               .then(r => r.ok ? r.json() : null)
               .then(u => {
                 if (u && !cancelled) {
@@ -63,7 +59,7 @@ export default function ConversationList() {
 
     load();
     return () => { cancelled = true; };
-  }, [isConnected, address, signMessageAsync]);
+  }, [isConnected, address]);
 
   if (!isConnected) {
     return (

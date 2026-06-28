@@ -28,7 +28,12 @@ const nextConfig: NextConfig = {
 
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'metadata-production-ae57.up.railway.app' },
+      { protocol: 'https', hostname: 'api.kindlelaunch.com' },
+      { protocol: 'https', hostname: 'kindleusercontent.kindlelaunch.com' },
+      { protocol: 'https', hostname: 'cdn.kindlelaunch.com' },
+      { protocol: 'https', hostname: 'metadata.kindlelaunch.com' },
+      { protocol: 'https', hostname: 'socialapi.kindlelaunch.com' },
+      { protocol: 'https', hostname: 'userpnl.kindlelaunch.com' },
       { protocol: 'https', hostname: 'sidiora.fun' },
       { protocol: 'https', hostname: 'api.dicebear.com' },
       { protocol: 'https', hostname: 'ipfs.io' },

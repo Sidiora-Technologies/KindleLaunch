@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getLiveStreams, type StreamPublic } from '@/core/clients/livestream-api';
 import { formatAddress } from '@/utils/format';
-import { dataApiUrl, mediaApiUrl } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl } from '@/core/sdk-config';
 
 function relTime(ts: number | null): string {
   if (!ts) return '';
@@ -39,7 +39,7 @@ export default function LiveModule() {
               .then(r => r.ok ? r.json() : null)
               .then(d => {
                 if (!d?.tokenAddress || cancelled) return;
-                return fetch(mediaApiUrl(`/metadata/${d.tokenAddress}.json`));
+                return fetch(metadataApiUrl(`/metadata/${d.tokenAddress}`));
               })
               .then(r => r && r.ok ? r.json() : null)
               .then(d => {

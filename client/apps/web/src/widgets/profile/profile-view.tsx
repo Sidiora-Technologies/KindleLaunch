@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAccount, usePublicClient, useReadContracts } from 'wagmi';
 import { formatAddress, formatCurrency, from6dec, formatNumber, safeFixed } from '@/utils/format';
-import { sdkBaseUrls, getUserAvatarUrl } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl, userApiUrl, getUserAvatarUrl } from '@/core/sdk-config';
 import {
   fetchAddressCounters,
   fetchAddressTransactions,
@@ -253,7 +253,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
   );
 
   const refreshProfile = useCallback(() => {
-    fetch(`${sdkBaseUrls.users}/users/${walletAddress}.json`)
+    fetch(userApiUrl(`/users/${walletAddress}`))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProfile(d))
       .catch(() => {});
@@ -263,7 +263,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
     if (!walletAddress) return;
     let cancelled = false;
 
-    fetch(`${sdkBaseUrls.users}/users/${walletAddress}.json`)
+    fetch(userApiUrl(`/users/${walletAddress}`))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!cancelled) setProfile(d); })
       .catch(() => {})
@@ -288,7 +288,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
 
       if (poolAddrs.length > 0) {
         try {
-          const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`);
+          const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`));
           if (statsRes.ok) {
             const statsMap = await statsRes.json();
             await Promise.all(
@@ -301,7 +301,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
 
                 if (tokenAddr) {
                   try {
-                    const metaRes = await fetch(`${sdkBaseUrls.metadata}/metadata/${tokenAddr}.json`);
+                    const metaRes = await fetch(metadataApiUrl(`/metadata/${tokenAddr}`));
                     if (metaRes.ok) {
                       const meta = await metaRes.json();
                       name = meta?.name || name;
@@ -389,7 +389,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
     (async () => {
       try {
         let statsMap: Record<string, any> = {};
-        const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`);
+        const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`));
         if (statsRes.ok) statsMap = await statsRes.json();
 
         const coins: CreatedCoinDisplay[] = await Promise.all(
@@ -397,7 +397,7 @@ export default function ProfileView({ walletAddress }: ProfileViewProps) {
             const tokenAddr = statsMap[p.poolAddress]?.tokenAddress || p.tokenAddress;
             let meta: any = null;
             try {
-              const metaRes = await fetch(`${sdkBaseUrls.metadata}/metadata/${tokenAddr}.json`);
+              const metaRes = await fetch(metadataApiUrl(`/metadata/${tokenAddr}`));
               if (metaRes.ok) meta = await metaRes.json();
             } catch {}
             return {

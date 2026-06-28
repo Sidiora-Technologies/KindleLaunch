@@ -12,7 +12,7 @@ client/development/openapi
 client/docs
 client/node_modules
 client/packages
-
+knowledge/fix-log
 knowledge/*.md
 knowledge/*.png
 knowledge/*.log

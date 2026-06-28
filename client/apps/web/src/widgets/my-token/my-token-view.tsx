@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useReadQuoterGetPoolsByCreator } from '@/core/network/contracts';
 import { formatAddress } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
 import TxFeed from '@/widgets/trading/tx-feed';
 import HoldersPanel from '@/widgets/trading/holders-panel';
 
@@ -27,7 +27,7 @@ export default function MyTokenView() {
   useEffect(() => {
     poolList.forEach((addr) => {
       if (poolMetas[addr]) return;
-      fetch(`${sdkBaseUrls.metadata}/metadata/${addr}.json`)
+      fetch(metadataApiUrl(`/metadata/${addr}`))
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d) setPoolMetas((prev) => ({ ...prev, [addr]: { name: d.name, symbol: d.symbol } }));

@@ -1,5 +1,5 @@
 /**
- * Metadata service client — `${sdkBaseUrls.metadata}`
+ * Metadata service client — metadata.kindlelaunch.com (media/metadata).
  *
  * Provides a single network-aware fetcher for token metadata. Uses the
  * batch endpoint (`GET /metadata/batch?addresses=...`) when available,
@@ -14,7 +14,7 @@
  *   stored as `null`.
  */
 
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
 import { reportError } from '@/core/report-error';
 import type { TokenMetadata } from '@/widgets/home/types';
 
@@ -68,10 +68,7 @@ export async function fetchTokenMetadata(
 
   const promise = (async () => {
     try {
-      const res = await fetch(
-        `${sdkBaseUrls.metadata}/metadata/${addr}.json`,
-        { signal },
-      );
+      const res = await fetch(metadataApiUrl(`/metadata/${addr}`), { signal });
       if (!res.ok) return null;
       return (await res.json()) as TokenMetadata;
     } catch (err) {
@@ -106,9 +103,9 @@ async function fetchBatchOnce(
   // ── Try the batch endpoint first ──
   if (batchEndpointSupported !== false) {
     try {
-      const url =
-        `${sdkBaseUrls.metadata}/metadata/batch` +
-        `?addresses=${encodeURIComponent(addresses.join(','))}`;
+      const url = metadataApiUrl(
+        `/metadata/batch?addresses=${encodeURIComponent(addresses.join(','))}`,
+      );
       const res = await fetch(url, { signal });
       if (res.ok) {
         batchEndpointSupported = true;

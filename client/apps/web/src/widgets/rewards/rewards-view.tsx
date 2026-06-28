@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount, useReadContracts, useWriteContract, usePublicClient } from 'wagmi';
 import { formatAddress, formatCurrency, from6dec } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
 import {
   FEES_ROUTER_ADDRESS,
@@ -102,7 +102,7 @@ export default function RewardsView() {
       // Fetch stats for all pools in one batch + token metadata in one batch
       if (poolAddrs.length > 0) {
         try {
-          const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`);
+          const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`));
           if (statsRes.ok) {
             const statsMap = await statsRes.json();
 

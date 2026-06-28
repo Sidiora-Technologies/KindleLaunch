@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
 
 interface TokenLogoProps {
   tokenAddress: string;
@@ -15,7 +15,7 @@ export default function TokenLogo({ tokenAddress, symbol, size = 32, className =
 
   useEffect(() => {
     if (!tokenAddress) return;
-    setSrc(`${sdkBaseUrls.metadata}/logo/${tokenAddress}.png`);
+    setSrc(metadataApiUrl(`/logo/${tokenAddress}.png`));
   }, [tokenAddress]);
 
   if (!src) {

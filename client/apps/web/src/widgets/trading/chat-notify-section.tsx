@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { usePoolChat, useChatAuth } from '@/hooks/chat/use-chat';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 
 /**
  * 3.1: Uses backend /stats/:pool for holder count instead of Paxscan.
@@ -22,7 +22,7 @@ export default function ChatNotifySection({ poolAddress }: ChatNotifySectionProp
 
   useEffect(() => {
     if (!poolAddress) return;
-    fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`)
+    fetch(dataApiUrl(`/stats/${poolAddress}`))
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.holderCount) setMemberCount(d.holderCount); })
       .catch(() => {});

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl } from '@/core/sdk-config';
 
 interface TokenDescriptionProps {
   poolAddress: string;
@@ -38,11 +38,11 @@ export default function TokenDescription({ poolAddress }: TokenDescriptionProps)
 
   useEffect(() => {
     if (!poolAddress) return;
-    fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`)
+    fetch(dataApiUrl(`/stats/${poolAddress}`))
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d?.tokenAddress) return;
-        return fetch(`${sdkBaseUrls.metadata}/metadata/${d.tokenAddress}.json`);
+        return fetch(metadataApiUrl(`/metadata/${d.tokenAddress}`));
       })
       .then(r => r && r.ok ? r.json() : null)
       .then(d => { if (d) setMeta(d); })

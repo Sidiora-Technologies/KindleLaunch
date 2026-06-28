@@ -4,11 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { dataApiUrl } from '@/core/sdk-config';
 import { queryKeys } from '@/core/query-keys';
 import { useRefetchOnAnyEvent } from '@/hooks/market/use-stream-refetch';
+import { DataChannels } from '@/core/realtime/data-stream';
 import type { RankingsResponse } from '@/widgets/home/types';
-
-// Rankings have no dedicated push channel — ordering shifts as swaps land, so we
-// throttle-invalidate on the global swap firehose and keep a slow poll backstop.
-const BACKSTOP_MS = 90_000;
 
 /**
  * Fetch ranking list for a given category with pagination.
@@ -22,7 +19,13 @@ export function useRanking(
 ) {
   const enabled = opts?.enabled ?? true;
 
-  useRefetchOnAnyEvent({ queryKeys: [['ranking', category]], enabled });
+  // Push-first: ranking-algo publishes rankings_update when a category is
+  // recomputed; re-validate on it (no background poll).
+  useRefetchOnAnyEvent({
+    queryKeys: [['ranking', category]],
+    channels: [DataChannels.RankingsUpdate],
+    enabled,
+  });
 
   return useQuery<RankingsResponse | null>({
     queryKey: queryKeys.ranking(category, limit, offset),
@@ -35,7 +38,5 @@ export function useRanking(
     },
     enabled,
     staleTime: 10_000,
-    refetchInterval: BACKSTOP_MS,
-    refetchIntervalInBackground: false,
   });
 }

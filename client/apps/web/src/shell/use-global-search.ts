@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRanking } from '@/hooks/market/use-ranking';
 import { useTokenStatsBatch } from '@/hooks/market/use-token-stats';
 import { useTokenMetadataBatch } from '@/hooks/market/use-token-metadata';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
 import { explorerSearch } from '@/core/clients/explorer-api';
 import { reportError } from '@/core/report-error';
 import { useDebouncedValue } from '@/hooks/ui/use-debounced-value';
@@ -118,14 +118,14 @@ async function fetchSearchResults(query: string): Promise<SearchResult[]> {
   const combined: SearchResult[] = [];
 
   if (isAddress) {
-    const res = await fetch(`${sdkBaseUrls.metadata}/metadata/${query}.json`);
+    const res = await fetch(metadataApiUrl(`/metadata/${query}`));
     if (res.ok) {
       const d = await res.json();
       if (d) combined.push(d);
     }
   } else {
     const [metaRes, explorerResults] = await Promise.all([
-      fetch(`${sdkBaseUrls.metadata}/tokens/search?q=${encodeURIComponent(query)}&limit=6`)
+      fetch(metadataApiUrl(`/tokens/search?q=${encodeURIComponent(query)}&limit=6`))
         .then(r => r.ok ? r.json() : [])
         .catch(() => []),
       explorerSearch(query),
@@ -156,7 +156,7 @@ async function fetchSearchResults(query: string): Promise<SearchResult[]> {
     combined.map(async (r) => {
       if (r.pool_address || !r.token_address) return;
       try {
-        const res = await fetch(`${sdkBaseUrls.metadata}/metadata/${r.token_address}.json`);
+        const res = await fetch(metadataApiUrl(`/metadata/${r.token_address}`));
         if (res.ok) {
           const meta = await res.json();
           if (meta?.pool_address) r.pool_address = meta.pool_address;

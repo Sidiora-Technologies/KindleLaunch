@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useAccount, usePublicClient, useReadContracts } from 'wagmi';
 import { useOptimisticReceipt } from '@/hooks/tx/use-optimistic-receipt';
-import { parseUnits, formatUnits, zeroAddress } from 'viem';
+import { parseUnits, formatUnits, zeroAddress, decodeEventLog } from 'viem';
 import {
   useWriteRouterCreateMarket,
   useWriteRouterBuy,
@@ -19,7 +19,8 @@ import {
 import RouterAbi from '@/core/network/abis/Router.json';
 import OpticalRegistryAbi from '@/core/network/abis/OpticalRegistry.json';
 import { useRouter } from 'next/navigation';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { metadataApiUrl } from '@/core/sdk-config';
+import { DataChannels } from '@/core/realtime/data-stream';
 
 interface WizardFormData {
   name: string;
@@ -83,7 +84,7 @@ async function uploadMetadataUnified(
   if (logoFile) body.append('logo', logoFile);
   if (bannerFile) body.append('banner', bannerFile);
 
-  const res = await fetch(`${sdkBaseUrls.metadata}/metadata/${tokenAddress}`, {
+  const res = await fetch(metadataApiUrl(`/metadata/${tokenAddress}`), {
     method: 'POST',
     body,
   });
@@ -103,6 +104,7 @@ export default function CreateWizard() {
   const [step, setStep] = useState(0);
   const [deploying, setDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
+  const [poolAddr, setPoolAddr] = useState('');
 
   const [form, setForm] = useState<WizardFormData>({
     name: '', symbol: '', description: '', customTags: '',
@@ -160,7 +162,7 @@ export default function CreateWizard() {
 
   const { write: writeApprove, isPending: approvePending, data: approveTxHash } = useWriteErc20Approve();
   const { write: writeCreateMarket, isPending: createPending, data: createTxHash } = useWriteRouterCreateMarket();
-  const { write: writeBuy, isPending: buyPending } = useWriteRouterBuy();
+  const { write: writeBuy, isPending: buyPending, data: buyTxHash } = useWriteRouterBuy();
 
   const { data: usdlDecimalsRaw } = useReadErc20Decimals({ token: USDL_ADDRESS });
   const usdlDecimals = usdlDecimalsRaw !== undefined && usdlDecimalsRaw !== null
@@ -181,65 +183,126 @@ export default function CreateWizard() {
     return allowance < fee + buyExtra;
   })();
 
-  const { receipt: createReceipt, isOptimistic: createIsOptimistic } = useOptimisticReceipt(createTxHash);
+  // Push-first confirmation (StreamConfirm): the create receipt confirms on a
+  // market_created stream event matched by tx hash (the pool doesn't exist yet,
+  // so this matches globally by hash, no false positives); the first-buy receipt
+  // confirms on a swap for the now-known pool. The 2s optimistic timer stays as
+  // the receipt-less-RPC fallback (Bug 1, 1.2.2 / 1.3.2).
+  const { receipt: createReceipt } = useOptimisticReceipt(createTxHash, {
+    channels: [DataChannels.MarketCreated],
+  });
   const { receipt: approveReceipt } = useOptimisticReceipt(approveTxHash);
+  useOptimisticReceipt(buyTxHash, {
+    poolAddress: poolAddr || null,
+    channels: [DataChannels.Swap],
+  });
 
   // Once the USDL approval confirms (or the optimistic fallback fires for nodes
-  // that swallow receipts), refresh the allowance and immediately proceed to
-  // createMarket. Without this the wizard stalls after step 1 because the
-  // allowance read never refetches and `deploying` stays true.
+  // that swallow receipts), await a fresh allowance read and only then proceed
+  // to createMarket — submitting against a stale allowance can revert (1.2.1).
   const approveHandledRef = useRef(false);
   useEffect(() => {
     if (!approveReceipt || approveHandledRef.current) return;
     approveHandledRef.current = true;
-    void refetchAllowance();
-    const optical = (form.optical || zeroAddress) as `0x${string}`;
-    writeCreateMarket({
-      name: form.name,
-      symbol: form.symbol,
-      feeStrategy: form.feeStrategy,
-      optical,
-    });
-  }, [approveReceipt, refetchAllowance, writeCreateMarket, form.optical, form.name, form.symbol, form.feeStrategy]);
-
-  const metadataUploadedRef = useRef(false);
-
-  if (createReceipt && !metadataUploadedRef.current && publicClient) {
-    metadataUploadedRef.current = true;
-
+    let cancelled = false;
     (async () => {
-      // Nodes on this chain don't return receipts for successful txs, so we
-      // can't read logs from the receipt. Instead, query eth_getLogs directly
-      // for the MarketCreated event filtered by creator.
-      let poolAddr = '';
-      let tokenAddr = '';
       try {
-        const marketCreatedAbi = (RouterAbi as any[]).find(
-          (x) => x.name === 'MarketCreated' && x.type === 'event',
-        );
-        const latestBlock = await publicClient.getBlockNumber();
-        const fromBlock = latestBlock > 50n ? latestBlock - 50n : 0n;
-        const logs = await publicClient.getLogs({
-          address: ROUTER_ADDRESS as `0x${string}`,
-          event: marketCreatedAbi,
-          args: { creator: address as `0x${string}` },
-          fromBlock,
-          toBlock: 'latest',
-        });
-        const last = logs[logs.length - 1] as any;
-        if (last) {
-          poolAddr = last.args?.pool ?? '';
-          tokenAddr = last.args?.token ?? '';
+        const { data: fresh } = await refetchAllowance();
+        const fee = creationFee ? BigInt(String(creationFee)) : 0n;
+        const buyExtra = hasFirstBuy ? parseUnits(form.firstBuyAmount, usdlDecimals) : 0n;
+        const needed = fee + buyExtra;
+        if (fresh !== undefined && fresh !== null && BigInt(String(fresh)) < needed) {
+          throw new Error('Approval did not register a sufficient allowance. Please retry.');
         }
-      } catch (err) {
-        console.error('getLogs for MarketCreated failed:', err);
+        if (cancelled) return;
+        const optical = (form.optical || zeroAddress) as `0x${string}`;
+        writeCreateMarket({
+          name: form.name,
+          symbol: form.symbol,
+          feeStrategy: form.feeStrategy,
+          optical,
+        });
+      } catch (err: any) {
+        if (cancelled) return;
+        setDeployError(err?.message || 'Approval step failed');
+        setDeploying(false);
       }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    approveReceipt, refetchAllowance, writeCreateMarket,
+    creationFee, hasFirstBuy, usdlDecimals,
+    form.optical, form.name, form.symbol, form.feeStrategy, form.firstBuyAmount,
+  ]);
 
-      if (poolAddr && tokenAddr) {
+  // Resolve the pool from the createMarket receipt and reach a terminal state.
+  // Keyed on the receipt (not run during render), so there is no React-compiler
+  // hazard and the per-attempt guard (reset in handleDeploy) allows retry. The
+  // deploying flag is cleared in `finally` on EVERY terminal path so the UI can
+  // never hang (1.2.2 / 1.2.3 / 1.2.4 / 1.2.5).
+  const createHandledRef = useRef(false);
+  useEffect(() => {
+    if (!createReceipt || createHandledRef.current || !address) return;
+    createHandledRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        let resolvedPool = '';
+        let tokenAddr = '';
+
+        // 1) Parse MarketCreated from the receipt's own logs (the fast path).
+        const receiptLogs = (createReceipt.logs ?? []) as Array<{ data: `0x${string}`; topics: [signature: `0x${string}`, ...args: `0x${string}`[]] }>;
+        for (const lg of receiptLogs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: RouterAbi as any,
+              data: lg.data,
+              topics: lg.topics,
+              eventName: 'MarketCreated',
+            });
+            const args = decoded.args as any;
+            resolvedPool = args?.pool ?? '';
+            tokenAddr = args?.token ?? '';
+            if (resolvedPool) break;
+          } catch {
+            // Not a MarketCreated log — skip.
+          }
+        }
+
+        // 2) Fallback: a single bounded eth_getLogs for receipt-less RPCs.
+        if (!resolvedPool && publicClient) {
+          const marketCreatedAbi = (RouterAbi as any[]).find(
+            (x) => x.name === 'MarketCreated' && x.type === 'event',
+          );
+          const latestBlock = await publicClient.getBlockNumber();
+          const fromBlock = latestBlock > 50n ? latestBlock - 50n : 0n;
+          const logs = await publicClient.getLogs({
+            address: ROUTER_ADDRESS as `0x${string}`,
+            event: marketCreatedAbi,
+            args: { creator: address as `0x${string}` },
+            fromBlock,
+            toBlock: 'latest',
+          });
+          const last = logs[logs.length - 1] as any;
+          if (last) {
+            resolvedPool = last.args?.pool ?? '';
+            tokenAddr = last.args?.token ?? '';
+          }
+        }
+
+        if (!resolvedPool) {
+          throw new Error('Token created, but resolving the new pool address timed out. Please retry.');
+        }
+        if (cancelled) return;
+        setPoolAddr(resolvedPool);
+
+        // Persist metadata + images (best-effort; never blocks navigation).
         try {
           const hasMetadata = form.description || form.website || form.twitter || form.telegram || form.discord || form.customTags || form.name || form.symbol;
-          if (hasMetadata || logoFile || bannerFile) {
-            await uploadMetadataUnified(address!, tokenAddr, form, logoFile, bannerFile);
+          if ((hasMetadata || logoFile || bannerFile) && tokenAddr) {
+            await uploadMetadataUnified(address, tokenAddr, form, logoFile, bannerFile);
           }
         } catch (err) {
           console.error('Metadata upload failed:', err);
@@ -248,17 +311,24 @@ export default function CreateWizard() {
         if (hasFirstBuy) {
           const buyAmount = parseUnits(form.firstBuyAmount, usdlDecimals);
           const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-          // P0-1: First buy into creator's own fresh pool. Proper quote-based
-          // minTokensOut requires waiting for pool indexing (P1 scope). Using
-          // 1n as floor to block zero-output trades; the bonding curve price
-          // on a new pool is deterministic so sandwich risk is minimal.
-          writeBuy({ pool: poolAddr as `0x${string}`, usdlAmountIn: buyAmount, minTokensOut: 1n, deadline });
+          // P0-1: First buy into creator's own fresh pool. minTokensOut=1n as a
+          // zero-output floor; the bonding curve price on a new pool is
+          // deterministic so sandwich risk is minimal.
+          writeBuy({ pool: resolvedPool as `0x${string}`, usdlAmountIn: buyAmount, minTokensOut: 1n, deadline });
         }
 
-        nav.push(`/token/${poolAddr}`);
+        if (!cancelled) nav.push(`/token/${resolvedPool}`);
+      } catch (err: any) {
+        if (!cancelled) setDeployError(err?.message || 'Token creation failed');
+      } finally {
+        if (!cancelled) setDeploying(false);
       }
     })();
-  }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createReceipt, address, publicClient]);
 
   const update = <K extends keyof WizardFormData>(key: K, value: WizardFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -293,7 +363,11 @@ export default function CreateWizard() {
     if (!canDeploy || !address) return;
     setDeploying(true);
     setDeployError(null);
+    // Per-attempt guard reset so a retry re-runs the approve + create flow and
+    // is never blocked by a stale one-shot latch (1.2.5).
     approveHandledRef.current = false;
+    createHandledRef.current = false;
+    setPoolAddr('');
 
     try {
       if (needsApproval) {

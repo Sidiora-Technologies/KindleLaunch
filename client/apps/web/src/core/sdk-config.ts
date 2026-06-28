@@ -14,42 +14,53 @@
  *                     and the WSS tunnel fronting social (chat/comments/DMs/
  *                     livestream).
  *
- * nginx routes (same-origin, no Next.js hop for data):
- *   /api/*    -> core/api          (REST snapshot)
- *   /ws       -> core/api          (multiplexed WSS)
- *   /ws/candles -> core/api        (charts-parity WSS)
- *   /stream   -> core/api          (SSE fallback)
- *   /media/*  -> media/gateway     (REST + uploads + media serve)
- *   /media/ws -> media/gateway     (social WSS tunnel)
+ * Public hosts (decision 2026-06-27 — each service on its own origin):
+ *   api.kindlelaunch.com             -> core/api        (DATA: REST snapshot + WS/SSE)
+ *   cdn.kindlelaunch.com             -> media/gateway   (auth, uploads, R2 serve, social WRITES + WS)
+ *   kindleusercontent.kindlelaunch.com -> media/user    (profiles, avatars, watchlist)
+ *   metadata.kindlelaunch.com        -> media/metadata  (token metadata, logos, banners)
+ *   socialapi.kindlelaunch.com       -> media/social    (chat/comments/DM READS)
+ *   userpnl.kindlelaunch.com         -> core/pnl-tracker(portfolio, cards, referrals)
  *
- * Each path is overridable via env for split-host deployments (a gateway on a
- * distinct public origin); the defaults are same-origin relative paths.
+ * Reads go DIRECT to the dedicated read host; authenticated SOCIAL writes + the
+ * social WS go through the gateway (it injects the trusted X-Actor-Wallet). Each
+ * host is overridable via NEXT_PUBLIC_*_URL env for local / split-host setups.
  */
 
-const GATEWAY = {
-  // Absolute origin overrides (empty => same-origin). Use for split-host setups,
-  // e.g. NEXT_PUBLIC_DATA_ORIGIN=https://api.kindlelaunch.fun
-  dataOrigin: (process.env.NEXT_PUBLIC_DATA_ORIGIN || '').replace(/\/$/, ''),
-  mediaOrigin: (process.env.NEXT_PUBLIC_MEDIA_ORIGIN || '').replace(/\/$/, ''),
-  // Path prefixes (same-origin nginx routing).
-  dataApiBase: process.env.NEXT_PUBLIC_DATA_API_BASE || '',
-  mediaApiBase: process.env.NEXT_PUBLIC_MEDIA_API_BASE || '/media',
-  dataWsPath: process.env.NEXT_PUBLIC_DATA_WS_PATH || '/ws',
-  dataCandlesWsPath: process.env.NEXT_PUBLIC_DATA_CANDLES_WS_PATH || '/ws/candles',
-  dataSsePath: process.env.NEXT_PUBLIC_DATA_SSE_PATH || '/stream',
-  mediaWsPath: process.env.NEXT_PUBLIC_MEDIA_WS_PATH || '/media/ws',
+// Each backend service is exposed at its OWN public host (decision 2026-06-27).
+// Reads hit the dedicated read hosts directly; authenticated SOCIAL writes (and
+// the social WS) must traverse the gateway, which strips client-supplied
+// X-Actor-Wallet and injects the trusted actor from the session. Every host is
+// env-overridable for local / split-host / preview deployments.
+const trimSlash = (v: string) => v.replace(/\/$/, '');
+
+const HOSTS = {
+  // core/api — the DATA edge: /ws, /ws/candles, /stream, /bff/token, /stats,
+  // /rankings, /platform/metrics, /udf, /status.
+  data: trimSlash(process.env.NEXT_PUBLIC_DATA_API_URL || 'https://api.kindlelaunch.com'),
+  // media/gateway — auth + uploads + R2 serve + the actor-injecting social
+  // write/WS edge.
+  gateway: trimSlash(process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://cdn.kindlelaunch.com'),
+  // media/user — profiles, avatars/banners, watchlist.
+  user: trimSlash(process.env.NEXT_PUBLIC_USER_API_URL || 'https://kindleusercontent.kindlelaunch.com'),
+  // media/metadata — token metadata + logos/banners.
+  metadata: trimSlash(process.env.NEXT_PUBLIC_METADATA_API_URL || 'https://metadata.kindlelaunch.com'),
+  // media/social — pool chat, comments, DMs, follows (READS, direct).
+  social: trimSlash(process.env.NEXT_PUBLIC_SOCIAL_API_URL || 'https://socialapi.kindlelaunch.com'),
+  // core/pnl-tracker — portfolio, positions, trades, cards, referrals.
+  pnl: trimSlash(process.env.NEXT_PUBLIC_PNL_API_URL || 'https://userpnl.kindlelaunch.com'),
 } as const;
 
-/**
- * Resolve the app origin for SSR (where relative URLs cannot be fetched). On the
- * client an empty string yields same-origin relative URLs.
- */
-function getAppOrigin(): string {
-  if (typeof window !== 'undefined') return '';
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
-  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
-  return 'http://localhost:3000';
-}
+// Path prefixes / WS routes (host-relative; env-overridable).
+const PATHS = {
+  dataWs: process.env.NEXT_PUBLIC_DATA_WS_PATH || '/ws',
+  dataCandlesWs: process.env.NEXT_PUBLIC_DATA_CANDLES_WS_PATH || '/ws/candles',
+  dataSse: process.env.NEXT_PUBLIC_DATA_SSE_PATH || '/stream',
+  // The gateway mounts social under /social and strips that prefix before
+  // forwarding to media/social (whose routes live at root).
+  socialWritePrefix: process.env.NEXT_PUBLIC_SOCIAL_WRITE_PREFIX || '/social',
+  socialWs: process.env.NEXT_PUBLIC_SOCIAL_WS_PATH || '/social/ws',
+} as const;
 
 /** Join a base + path with exactly one slash between them. */
 function join(base: string, path: string): string {
@@ -60,19 +71,52 @@ function join(base: string, path: string): string {
 }
 
 /**
- * Build a REST URL on the DATA gateway (core/api). `path` is the core/api route
- * (e.g. `/stats/0xabc`, `/rankings/trending`, `/udf/history`, `/bff/token/0x`,
- * `/platform/metrics`). Same-origin by default; absolute in SSR / split-host.
+ * Build a REST URL on the DATA edge (core/api `api.kindlelaunch.com`): `/stats`,
+ * `/rankings`, `/udf/*`, `/bff/token`, `/platform/metrics`, `/status`.
  */
 export function dataApiUrl(path: string): string {
-  const origin = GATEWAY.dataOrigin || getAppOrigin();
-  return join(`${origin}${GATEWAY.dataApiBase}`, path);
+  return join(HOSTS.data, path);
 }
 
-/** Build a REST URL on the MEDIA gateway (media/gateway). */
-export function mediaApiUrl(path: string): string {
-  const origin = GATEWAY.mediaOrigin || getAppOrigin();
-  return join(`${origin}${GATEWAY.mediaApiBase}`, path);
+/** Build a REST URL on the media/gateway (`cdn.kindlelaunch.com`): /auth, /upload, R2 serve. */
+export function gatewayUrl(path: string): string {
+  return join(HOSTS.gateway, path);
+}
+
+/** @deprecated Use `gatewayUrl`. Retained as an alias during migration. */
+export const mediaApiUrl = gatewayUrl;
+
+/** Build a REST URL on media/user (`kindleusercontent.kindlelaunch.com`): /users/*. */
+export function userApiUrl(path: string): string {
+  return join(HOSTS.user, path);
+}
+
+/** Build a REST URL on media/metadata (`metadata.kindlelaunch.com`): /metadata/*, /logo, /banner. */
+export function metadataApiUrl(path: string): string {
+  return join(HOSTS.metadata, path);
+}
+
+/**
+ * Build a SOCIAL READ URL — direct to media/social (`socialapi.kindlelaunch.com`).
+ * Use for public GETs (messages, comments, follower lists, DM history).
+ */
+export function socialReadUrl(path: string): string {
+  return join(HOSTS.social, path);
+}
+
+/**
+ * Build a SOCIAL WRITE URL — through the gateway (`cdn.kindlelaunch.com/social`),
+ * which authenticates the session and injects the trusted X-Actor-Wallet header
+ * media/social requires. Use for POST/PATCH/PUT/DELETE (comments, message
+ * moderation, follows, likes). Pass writes with `credentials: 'include'`.
+ */
+export function socialWriteUrl(path: string): string {
+  return join(`${HOSTS.gateway}${PATHS.socialWritePrefix}`, path);
+}
+
+/** Build a REST URL on core/pnl-tracker (`userpnl.kindlelaunch.com`): portfolio, cards, referrals. */
+export function pnlApiUrl(path: string): string {
+  return join(HOSTS.pnl, path);
 }
 
 /** ws/wss scheme matching the current page (client) or the configured origin. */
@@ -100,17 +144,21 @@ function wsUrl(origin: string, path: string): string {
 
 /** Multiplexed data WSS endpoint (core/api `/ws`). */
 export function dataWsUrl(): string {
-  return wsUrl(GATEWAY.dataOrigin, GATEWAY.dataWsPath);
+  return wsUrl(HOSTS.data, PATHS.dataWs);
 }
 
 /** Charts-parity candle WSS endpoint (core/api `/ws/candles`). */
 export function dataCandlesWsUrl(): string {
-  return wsUrl(GATEWAY.dataOrigin, GATEWAY.dataCandlesWsPath);
+  return wsUrl(HOSTS.data, PATHS.dataCandlesWs);
 }
 
-/** Social/media WSS tunnel endpoint (media/gateway `/media/ws`). */
-export function mediaWsUrl(): string {
-  return wsUrl(GATEWAY.mediaOrigin, GATEWAY.mediaWsPath);
+/**
+ * Social WSS tunnel endpoint — through the gateway (`cdn.kindlelaunch.com/social/ws`).
+ * The gateway upgrades the WS only for an authenticated session and injects the
+ * trusted X-Actor-Wallet (the browser cannot set it on a WS handshake).
+ */
+export function socialWsUrl(): string {
+  return wsUrl(HOSTS.gateway, PATHS.socialWs);
 }
 
 /**
@@ -119,8 +167,7 @@ export function mediaWsUrl(): string {
  * `*` for all) and `pools` (comma-separated; empty => all pools).
  */
 export function dataStreamUrl(opts?: { channels?: string[]; pools?: string[] }): string {
-  const origin = GATEWAY.dataOrigin || getAppOrigin();
-  const url = join(`${origin}`, GATEWAY.dataSsePath);
+  const url = join(HOSTS.data, PATHS.dataSse);
   const qs = new URLSearchParams();
   if (opts?.channels && opts.channels.length) qs.set('channels', opts.channels.join(','));
   if (opts?.pools && opts.pools.length) qs.set('pools', opts.pools.join(','));
@@ -128,41 +175,7 @@ export function dataStreamUrl(opts?: { channels?: string[]; pools?: string[] }):
   return q ? `${url}?${q}` : url;
 }
 
-/** Avatar URL on the media gateway. */
+/** Avatar URL on media/user (`kindleusercontent.kindlelaunch.com`). */
 export function getUserAvatarUrl(walletAddress: string): string {
-  return mediaApiUrl(`/users/${walletAddress}/avatar`);
-}
-
-// ── Backward-compatibility shims (deprecated) ──────────────────────────────
-//
-// The per-service `sdkBaseUrls`/`getServiceWsUrl` surface is retained so the
-// ~47 files still on the legacy client layer keep compiling while Phase 2
-// migrates them to the gateway primitives above. WS helpers are already
-// repointed to the new gateways so the two realtime paths (candles, social)
-// align immediately; REST shims map each old service onto its core/api route
-// prefix (or the media gateway) so calls flow same-origin through nginx.
-
-/** @deprecated Use `dataApiUrl` / `mediaApiUrl`. */
-export const sdkBaseUrls = {
-  // core/api (data) REST prefixes
-  candles: dataApiUrl('/udf'), // old client appends /history, /config, /symbols, /time
-  indexer: dataApiUrl(''), // recent-tx reads move to the multiplexed stream (Phase 2)
-  ranking: dataApiUrl(''), // old client appends /rankings/{category}
-  stats: dataApiUrl(''), // old client appends /stats/{pool}
-  // media/gateway REST prefixes
-  metadata: mediaApiUrl('/metadata'),
-  users: mediaApiUrl('/users'),
-  chat: mediaApiUrl('/chat'),
-  livestream: mediaApiUrl('/livestream'),
-  pnl: mediaApiUrl('/pnl'),
-} as const;
-
-export type WsService = 'candles' | 'chat';
-/**
- * @deprecated Use `dataCandlesWsUrl()` / `mediaWsUrl()` directly. Repointed to
- * the new gateways: `candles` -> core/api `/ws/candles`; `chat` -> media/gateway
- * `/media/ws`.
- */
-export function getServiceWsUrl(service: WsService): string {
-  return service === 'candles' ? dataCandlesWsUrl() : mediaWsUrl();
+  return userApiUrl(`/users/${walletAddress}/avatar`);
 }

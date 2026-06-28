@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { formatCurrency, safeFixed } from '@/utils/format';
-import { sdkBaseUrls, getServiceWsUrl } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
+import { usePoolEvents } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
 
 interface CandleBar {
   poolAddress: string;
@@ -30,86 +32,43 @@ interface CandlePressureProps {
   poolAddress: string;
 }
 
-function getWsUrl(): string {
-  return getServiceWsUrl('candles');
-}
-
 export default function CandlePressure({ poolAddress }: CandlePressureProps) {
   const [candle, setCandle] = useState<CandleBar | null>(null);
   const [pressure, setPressure] = useState<PressureData | null>(null);
 
-  // 3.5: Fetch 1h/24h pressure from backend
+  // Bootstrap 1h/24h pressure from the one-shot BFF snapshot; live deltas arrive
+  // on the pressure_update / candle_update stream below (push-first, no polling).
   useEffect(() => {
     if (!poolAddress) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/pressure`);
+        const res = await fetch(dataApiUrl(`/bff/token/${poolAddress}`));
         if (res.ok && !cancelled) {
-          setPressure(await res.json());
+          const bff = await res.json();
+          if (bff?.pressure) setPressure(bff.pressure as PressureData);
         }
       } catch { /* noop */ }
     })();
     return () => { cancelled = true; };
   }, [poolAddress]);
 
-  useEffect(() => {
-    if (!poolAddress) return;
-    let ws: WebSocket | null = null;
-    let pingTimer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
-    function connect() {
-      if (cancelled) return;
-      try {
-        ws = new WebSocket(getWsUrl());
-
-        ws.onopen = () => {
-          ws!.send(JSON.stringify({
-            type: 'subscribe',
-            pools: [poolAddress],
-            timeframes: ['1m'],
-          }));
-          pingTimer = setInterval(() => {
-            if (ws?.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'ping' }));
-            }
-          }, 25_000);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            if (msg.type !== 'candle_update') return;
-            const d = msg.data as CandleBar;
-            if (!d || d.poolAddress?.toLowerCase() !== poolAddress.toLowerCase()) return;
-            if (d.timeframe !== '1m') return;
-            setCandle(d);
-          } catch {}
-        };
-
-        ws.onclose = () => {
-          if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-          if (!cancelled) setTimeout(connect, 3_000);
-        };
-
-        ws.onerror = () => ws?.close();
-      } catch {
-        if (!cancelled) setTimeout(connect, 5_000);
+  // Live 1m candle (buy/sell volume) + aggregate pressure deltas off the shared
+  // multiplexed data stream — no bespoke socket, no ping timer, no reconnect loop.
+  usePoolEvents(
+    poolAddress,
+    [DataChannels.CandleUpdate, DataChannels.PressureUpdate],
+    (event: DataEvent) => {
+      if (event.type === 'candle_update') {
+        const d = event.data as CandleBar | undefined;
+        if (!d || d.timeframe !== '1m') return;
+        if (d.poolAddress?.toLowerCase() !== poolAddress.toLowerCase()) return;
+        setCandle(d);
+      } else if (event.type === 'pressure_update') {
+        setPressure(event.data as PressureData);
       }
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (pingTimer) clearInterval(pingTimer);
-      if (ws) {
-        try { ws.send(JSON.stringify({ type: 'unsubscribe', pools: [poolAddress] })); } catch {}
-        ws.close();
-      }
-    };
-  }, [poolAddress]);
+    },
+  );
 
   if (!candle && !pressure) return null;
 

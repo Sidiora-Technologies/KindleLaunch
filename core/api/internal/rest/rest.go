@@ -51,6 +51,8 @@ func Register(r chi.Router, st *store.Store, c *cache.Cache) {
 	r.Get("/rankings/{category}", rankingsByCategory(st, c))
 	r.Get("/platform/metrics", platformMetrics(st))
 	r.Get("/bff/token/{poolAddress}", tokenBFF(st, c))
+	r.Get("/bff/token/{poolAddress}/trades", recentTrades(st, c))
+	r.Get("/bff/token/{poolAddress}/creator-activity", creatorActivity(st, c))
 }
 
 // ---- UDF (ported from core/trading-charts httpapi/udf.go) -----------------

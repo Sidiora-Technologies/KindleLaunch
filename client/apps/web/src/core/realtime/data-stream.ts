@@ -50,6 +50,15 @@ export const DataChannels = {
   OpticalExecuted: 'indexer:optical_executed',
   ConfigUpdated: 'indexer:config_updated',
   CandleUpdate: 'candles:update',
+  // Derived-state push channels (session 2 backend): workers publish the fresh
+  // snapshot at each cache-write site so the client never has to poll.
+  StatsUpdate: 'stats:update',
+  HoldersUpdate: 'holders:update',
+  PressureUpdate: 'pressure:update',
+  ReactionsUpdate: 'reactions:update',
+  PlatformUpdate: 'platform:update',
+  RankingsUpdate: 'rankings:update',
+  PnlUpdate: 'pnl:update',
 } as const;
 
 export type DataChannel = (typeof DataChannels)[keyof typeof DataChannels];
@@ -129,6 +138,13 @@ const TYPE_TO_CHANNEL: Record<string, string> = {
   optical_executed: DataChannels.OpticalExecuted,
   config_updated: DataChannels.ConfigUpdated,
   candle_update: DataChannels.CandleUpdate,
+  stats_update: DataChannels.StatsUpdate,
+  holders_update: DataChannels.HoldersUpdate,
+  pressure_update: DataChannels.PressureUpdate,
+  reactions_update: DataChannels.ReactionsUpdate,
+  platform_update: DataChannels.PlatformUpdate,
+  rankings_update: DataChannels.RankingsUpdate,
+  pnl_update: DataChannels.PnlUpdate,
 };
 
 const consumers = new Map<number, Consumer>();
@@ -316,7 +332,16 @@ function ensureManager(): WsManager<InboundFrame> {
 }
 
 let discreteSeq = 0;
-const COALESCABLE = new Set<string>([DataChannels.CandleUpdate, DataChannels.PoolStateUpdated]);
+// Latest-per-key channels (broker coalesces these): candle + pool_state ticks,
+// plus the derived stats/pressure/platform snapshots (only the freshest matters).
+// holders/reactions/rankings/pnl stay must-deliver (each frame is meaningful).
+const COALESCABLE = new Set<string>([
+  DataChannels.CandleUpdate,
+  DataChannels.PoolStateUpdated,
+  DataChannels.StatsUpdate,
+  DataChannels.PressureUpdate,
+  DataChannels.PlatformUpdate,
+]);
 
 /** Coalescing key: latest-per-(channel,pool[,timeframe]) for state ticks; a
  *  unique key per discrete event so must-deliver frames are never collapsed. */

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { getDmMessages, type DmMessage } from '@/core/clients/chat-api';
-import { ensureAuth } from '@/core/clients/chat-auth';
 import { formatAddress } from '@/utils/format';
 import { useDmChat } from '@/hooks/chat/use-chat';
 
@@ -23,7 +22,6 @@ function relTime(ts: number): string {
 
 export default function DmThread({ conversationId, peerAddress, peerName }: DmThreadProps) {
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
   const { sendDm, incomingDm, connectAndSubscribe, isAuthenticated } = useDmChat();
   const [messages, setMessages] = useState<DmMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,9 +36,7 @@ export default function DmThread({ conversationId, peerAddress, peerName }: DmTh
 
     async function load() {
       try {
-        const auth = await ensureAuth(address!, signMessageAsync);
-        if (!auth || cancelled) return;
-        const data = await getDmMessages(conversationId, auth, { limit: 50 });
+        const data = await getDmMessages(conversationId, { limit: 50 });
         if (!cancelled) setMessages(data.messages);
       } catch {}
       finally { if (!cancelled) setLoading(false); }
@@ -48,7 +44,7 @@ export default function DmThread({ conversationId, peerAddress, peerName }: DmTh
 
     load();
     return () => { cancelled = true; };
-  }, [isConnected, address, conversationId, signMessageAsync]);
+  }, [isConnected, address, conversationId]);
 
   // Connect WS for real-time DMs
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react';
 import { create } from 'zustand';
-import { dataApiUrl, mediaApiUrl } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl } from '@/core/sdk-config';
 import { fetchTokenHolders, fetchTokenCounters } from '@/core/clients/paxscan';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
 import { usePoolEvents } from '@/core/realtime/use-data-stream';
@@ -243,13 +243,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set({ metadataLoading: true });
     try {
       const tokenAddr = stats?.tokenAddress || pool;
-      const res = await fetch(mediaApiUrl(`/metadata/${tokenAddr}.json`));
+      const res = await fetch(metadataApiUrl(`/metadata/${tokenAddr}`));
       if (res.ok) {
         const data = await res.json();
         set({ metadata: data });
       } else {
         // Try legacy endpoint
-        const res2 = await fetch(mediaApiUrl(`/metadata/${tokenAddr}`));
+        const res2 = await fetch(metadataApiUrl(`/metadata/${tokenAddr}`));
         if (res2.ok) {
           const data = await res2.json();
           set({ metadata: { token_address: tokenAddr, images: data.images } });

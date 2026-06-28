@@ -16,7 +16,7 @@ import {
 } from '@/core/network/contracts';
 import { parseUnits, formatUnits, zeroAddress, maxUint256 } from 'viem';
 import { formatNumber, formatCurrency, safeFixed } from '@/utils/format';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
 import TokenImage from '@/ui/shared/token-image';
 import type { RankingItem, PoolStats, TokenMetadata } from '@/widgets/home/types';
@@ -300,14 +300,14 @@ export default function SwapPanel() {
     async function load() {
       setTokensLoading(true);
       try {
-        const res = await fetch(`${sdkBaseUrls.ranking}/rankings/trending?limit=200&offset=0`);
+        const res = await fetch(dataApiUrl('/rankings/trending?limit=200&offset=0'));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const items: RankingItem[] = data.items ?? [];
         if (items.length === 0) { setTokensLoading(false); return; }
 
         const addrs = items.map((i) => i.poolAddress);
-        const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${addrs.join(',')}`);
+        const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${addrs.join(',')}`));
         let statsMap: Record<string, PoolStats> = {};
         if (statsRes.ok) statsMap = await statsRes.json();
 

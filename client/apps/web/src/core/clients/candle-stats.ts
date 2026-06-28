@@ -1,4 +1,4 @@
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
 
 export interface CandleStats {
   change24h: number;    // % change over 24h
@@ -16,7 +16,7 @@ async function fetchCandles(
 ): Promise<{ t: number[]; o: number[]; h: number[]; l: number[]; c: number[] } | null> {
   try {
     const res = await fetch(
-      `${sdkBaseUrls.candles}/history?symbol=${poolAddress}&resolution=${resolution}&from=${fromTs}&to=${toTs}`
+      dataApiUrl(`/udf/history?symbol=${poolAddress}&resolution=${resolution}&from=${fromTs}&to=${toTs}`)
     );
     if (!res.ok) return null;
     const data = await res.json();

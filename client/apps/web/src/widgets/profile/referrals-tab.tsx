@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { safeFixed } from '@/utils/format';
 import { getSharerStats, type SharerStats } from '@/core/clients/pnl';
-import { sdkBaseUrls } from '@/core/sdk-config';
 
 interface ReferralsTabProps {
   walletAddress: string;

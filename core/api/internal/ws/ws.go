@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -255,6 +256,11 @@ func (c *wsConn) applySubscribe(channels, pools []string, add bool) {
 		}
 	}
 	for _, p := range pools {
+		// Canonicalise to lowercase so the broker's exact-match pool filter
+		// matches the lowercased pool the transform routes on, regardless of the
+		// casing the client subscribed with (Bug 3 / 6a). The ack echo
+		// (setKeys(c.pools)) is then lowercase too.
+		p = strings.ToLower(strings.TrimSpace(p))
 		if p == "" {
 			continue
 		}

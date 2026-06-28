@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWaitForTransactionReceipt } from 'wagmi';
 import type { TransactionReceipt } from 'viem';
+import { useDataStream } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
 
 /**
  * Drop-in replacement for wagmi's `useWaitForTransactionReceipt` that adds an
@@ -30,9 +32,37 @@ export interface OptimisticReceipt extends Partial<TransactionReceipt> {
   status: 'success' | 'reverted';
   /** True when this receipt was synthesised by the optimistic timeout, not confirmed on-chain. */
   _optimistic?: boolean;
+  /** True when confirmation came from a matching indexer stream event (authoritative). */
+  _streamConfirmed?: boolean;
 }
 
-export function useOptimisticReceipt(txHash: `0x${string}` | undefined) {
+/**
+ * Optional push-first confirmation: when the indexer emits the matching event
+ * (swap for a trade, market_created for a launch) for this `poolAddress`, the
+ * receipt resolves immediately and authoritatively — faster and more reliable
+ * than waiting out the optimistic timer on an RPC that swallows receipts. The
+ * event is matched on its embedded tx hash when present (no false positives).
+ */
+export interface StreamConfirm {
+  poolAddress?: string | null;
+  channels?: string[];
+  enabled?: boolean;
+}
+
+function eventTxHash(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const d = data as Record<string, unknown>;
+  const direct = d.txHash ?? d.transactionHash ?? d.tx_hash;
+  if (typeof direct === 'string') return direct;
+  const args = d.args as Record<string, unknown> | undefined;
+  const nested = args?.txHash ?? args?.transactionHash ?? args?.tx_hash;
+  return typeof nested === 'string' ? nested : undefined;
+}
+
+export function useOptimisticReceipt(
+  txHash: `0x${string}` | undefined,
+  confirm?: StreamConfirm,
+) {
   const { data: realReceipt } = useWaitForTransactionReceipt({ hash: txHash });
   const [optimistic, setOptimistic] = useState<OptimisticReceipt | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +87,35 @@ export function useOptimisticReceipt(txHash: `0x${string}` | undefined) {
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     };
   }, [txHash]);
+
+  // Authoritative confirmation off the indexer stream (swap / market_created).
+  // The stream arm enables on a pool match OR a channel-only match (e.g. the
+  // create receipt confirms against market_created before the pool exists): the
+  // event is matched on its embedded tx hash, so a pool-less subscription has no
+  // false positives. Subscribing via useDataStream (not usePoolEvents) so a
+  // pool-less channel subscription is permitted (Bug 1).
+  useDataStream({
+    channels: confirm?.channels ?? [DataChannels.Swap, DataChannels.MarketCreated],
+    pools: confirm?.poolAddress ? [confirm.poolAddress] : undefined,
+    onEvent: (event: DataEvent) => {
+      if (!txHash) return;
+      const evHash = eventTxHash(event.data);
+      // Match on tx hash when the payload carries it; otherwise ignore to avoid
+      // confirming the wrong in-flight tx on a busy pool.
+      if (!evHash || evHash.toLowerCase() !== txHash.toLowerCase()) return;
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      setOptimistic({
+        transactionHash: txHash,
+        status: 'success',
+        _optimistic: false,
+        _streamConfirmed: true,
+      });
+    },
+    enabled:
+      (confirm?.enabled ?? true) &&
+      !!txHash &&
+      (!!confirm?.poolAddress || (confirm?.channels?.length ?? 0) > 0),
+  });
 
   // Real receipt always wins — cast to OptimisticReceipt shape.
   const receipt = realReceipt

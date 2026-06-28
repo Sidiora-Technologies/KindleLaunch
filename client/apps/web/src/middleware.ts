@@ -42,8 +42,24 @@ const externalDataOrigins = [
   'https://api.paxscan.io',
 ];
 
+// The six dedicated backend hosts the browser talks to (decision 2026-06-27).
+// Defaults mirror core/sdk-config.ts; each is overridable per-env for split-host
+// / preview deployments. wss: (below) already covers the WS/SSE upgrades.
+const kindleHosts = [
+  process.env.NEXT_PUBLIC_DATA_API_URL || 'https://api.kindlelaunch.com',
+  process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://cdn.kindlelaunch.com',
+  process.env.NEXT_PUBLIC_USER_API_URL || 'https://kindleusercontent.kindlelaunch.com',
+  process.env.NEXT_PUBLIC_METADATA_API_URL || 'https://metadata.kindlelaunch.com',
+  process.env.NEXT_PUBLIC_SOCIAL_API_URL || 'https://socialapi.kindlelaunch.com',
+  process.env.NEXT_PUBLIC_PNL_API_URL || 'https://userpnl.kindlelaunch.com',
+].reduce<string[]>((acc, v) => {
+  try { acc.push(new URL(v).origin); } catch {}
+  return acc;
+}, []);
+
 const connectSrc = [...new Set([
   ...gatewayOrigins,
+  ...kindleHosts,
   ...rpcOrigins,
   ...externalDataOrigins,
   ...embeddedWalletOrigins,

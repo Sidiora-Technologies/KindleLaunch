@@ -1,4 +1,4 @@
-import { getServiceWsUrl } from '@/core/sdk-config';
+import { socialWsUrl } from '@/core/sdk-config';
 import { reportError } from '@/core/report-error';
 import { WsManager, type WsManagerContext } from '@/core/realtime/ws-manager';
 import type { PoolMessage, DmMessage } from './chat-api';
@@ -98,7 +98,7 @@ function handleMessage(data: ChatInbound, ctx: WsManagerContext) {
 function ensureManager(): WsManager<ChatInbound> {
   if (manager) return manager;
   manager = new WsManager<ChatInbound>({
-    url: () => getServiceWsUrl('chat'),
+    url: socialWsUrl,
     onMessage: (data, ctx) => {
       try {
         handleMessage(data, ctx);

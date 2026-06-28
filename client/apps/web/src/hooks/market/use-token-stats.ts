@@ -5,13 +5,13 @@ import { dataApiUrl } from '@/core/sdk-config';
 import { queryKeys } from '@/core/query-keys';
 import { cachePolicy } from '@/core/cache-policy';
 import { useRefetchOnPoolEvent, useRefetchOnAnyEvent } from '@/hooks/market/use-stream-refetch';
+import { DataChannels } from '@/core/realtime/data-stream';
 import type { PoolStats } from '@/widgets/home/types';
 
-// Push is primary (core/api `/ws` swap + pool_state_updated deltas re-validate
-// the snapshot). These long, visible-tab-only backstops only self-heal a missed
-// event — they are NOT the freshness mechanism, so they stay slow at 500K.
-const BACKSTOP_SINGLE_MS = 60_000;
-const BACKSTOP_BATCH_MS = 90_000;
+// Push-first: the dedicated `stats_update` channel (plus swap / pool_state_updated
+// as a recompute hint) re-validates the snapshot. There is NO background poll —
+// the stream is the freshness mechanism, and invalidateQueries only refetches
+// queries that are currently mounted, so cost stays bounded at 500K.
 
 /**
  * Fetches pool stats for a single pool. TanStack Query deduplicates calls
@@ -30,6 +30,7 @@ export function useTokenStats(
   useRefetchOnPoolEvent({
     poolAddress,
     queryKeys: [queryKeys.tokenStats(poolAddress ?? '')],
+    channels: [DataChannels.StatsUpdate, DataChannels.Swap, DataChannels.PoolStateUpdated],
     enabled,
   });
 
@@ -42,10 +43,9 @@ export function useTokenStats(
       return res.json();
     },
     enabled,
-    // REALTIME: WS stream is primary; this REST poll is the freshness backstop.
+    // REALTIME: WS stream is the sole freshness mechanism; no background poll.
     ...cachePolicy.REALTIME,
-    refetchInterval: BACKSTOP_SINGLE_MS,
-    refetchIntervalInBackground: false,
+    refetchInterval: false,
   });
 }
 
@@ -64,6 +64,7 @@ export function useTokenStatsBatch(
 
   useRefetchOnAnyEvent({
     queryKeys: [queryKeys.tokenStatsBatch(pools)],
+    channels: [DataChannels.StatsUpdate],
     enabled,
   });
 
@@ -76,9 +77,8 @@ export function useTokenStatsBatch(
       return res.json();
     },
     enabled,
-    // FAST: home/trending aggregates — slightly looser than a single live pool.
+    // FAST: home/trending aggregates — re-validated by the stats_update firehose.
     ...cachePolicy.FAST,
-    refetchInterval: BACKSTOP_BATCH_MS,
-    refetchIntervalInBackground: false,
+    refetchInterval: false,
   });
 }

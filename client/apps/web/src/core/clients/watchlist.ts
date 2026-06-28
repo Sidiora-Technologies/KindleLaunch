@@ -1,4 +1,4 @@
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { userApiUrl } from '@/core/sdk-config';
 
 const STORAGE_KEY = 'sidiora_watchlist';
 
@@ -25,7 +25,7 @@ function setLocalWatchlist(list: string[]) {
 export async function getWatchlist(walletAddress?: string): Promise<string[]> {
   if (!walletAddress) return getLocalWatchlist();
   try {
-    const res = await fetch(`${sdkBaseUrls.users}/users/${walletAddress}/watchlist`);
+    const res = await fetch(userApiUrl(`/users/${walletAddress}/watchlist`));
     if (!res.ok) return getLocalWatchlist();
     const data = await res.json();
     return (data.pools ?? []) as string[];
@@ -50,7 +50,7 @@ export async function addToWatchlist(
   }
   try {
     const res = await fetch(
-      `${sdkBaseUrls.users}/users/${walletAddress}/watchlist/${poolAddress}`,
+      userApiUrl(`/users/${walletAddress}/watchlist/${poolAddress}`),
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -83,7 +83,7 @@ export async function removeFromWatchlist(
   }
   try {
     const res = await fetch(
-      `${sdkBaseUrls.users}/users/${walletAddress}/watchlist/${poolAddress}`,
+      userApiUrl(`/users/${walletAddress}/watchlist/${poolAddress}`),
       {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

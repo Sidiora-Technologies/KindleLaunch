@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { formatAddress, safeFixed } from '@/utils/format';
-import { sdkBaseUrls, getUserAvatarUrl } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl, userApiUrl, getUserAvatarUrl } from '@/core/sdk-config';
 import { fetchAddressCounters, type AddressCounters } from '@/core/clients/explorer-api';
 
 /**
@@ -29,7 +29,7 @@ export default function CreatorCard({ poolAddress }: CreatorCardProps) {
     if (!poolAddress) return;
     (async () => {
       try {
-        const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`).then(r => r.ok ? r.json() : null);
+        const statsRes = await fetch(dataApiUrl(`/stats/${poolAddress}`)).then(r => r.ok ? r.json() : null);
         if (!statsRes?.tokenAddress) return;
 
         // Get creator holdings pct from backend stats
@@ -37,11 +37,11 @@ export default function CreatorCard({ poolAddress }: CreatorCardProps) {
           setHoldingsPct(statsRes.creatorHoldingsPct);
         }
 
-        const metaRes = await fetch(`${sdkBaseUrls.metadata}/metadata/${statsRes.tokenAddress}.json`).then(r => r.ok ? r.json() : null);
+        const metaRes = await fetch(metadataApiUrl(`/metadata/${statsRes.tokenAddress}`)).then(r => r.ok ? r.json() : null);
         if (!metaRes?.creator) return;
         setCreatorAddr(metaRes.creator);
 
-        const userRes = await fetch(`${sdkBaseUrls.users}/users/${metaRes.creator}`).then(r => r.ok ? r.json() : null);
+        const userRes = await fetch(userApiUrl(`/users/${metaRes.creator}`)).then(r => r.ok ? r.json() : null);
         if (userRes) setCreator(userRes);
       } catch { /* noop */ }
     })();

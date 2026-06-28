@@ -16,7 +16,8 @@ import {
   ROUTER_ADDRESS,
   USDL_ADDRESS,
 } from '@/core/network/contracts';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl } from '@/core/sdk-config';
+import { DataChannels } from '@/core/realtime/data-stream';
 import { trackEvent } from '@/core/analytics';
 import { reportError } from '@/core/report-error';
 import { useDebouncedValue } from '@/hooks/ui/use-debounced-value';
@@ -45,12 +46,12 @@ export function useTradePanel({ poolAddress }: UseTradePanelArgs) {
   // ── Token metadata fetch ────────────────────────────────────
   useEffect(() => {
     if (!poolAddress) return;
-    fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}`)
+    fetch(dataApiUrl(`/stats/${poolAddress}`))
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (!d?.tokenAddress) return;
         setTokenAddress(d.tokenAddress);
-        return fetch(`${sdkBaseUrls.metadata}/metadata/${d.tokenAddress}.json`);
+        return fetch(metadataApiUrl(`/metadata/${d.tokenAddress}`));
       })
       .then((r) => r && r.ok ? r.json() : null)
       .then((d) => { if (d?.symbol) setTokenName(d.symbol); else if (d?.name) setTokenName(d.name); })
@@ -60,8 +61,16 @@ export function useTradePanel({ poolAddress }: UseTradePanelArgs) {
   // ── Write hooks ──────────────────────────────────────────────
   const { write: writeBuy, isPending: buyPending, data: buyTxHash, reset: resetBuy } = useWriteRouterBuy();
   const { write: writeSell, isPending: sellPending, data: sellTxHash, reset: resetSell } = useWriteRouterSell();
-  const { receipt: buyReceipt } = useOptimisticReceipt(buyTxHash);
-  const { receipt: sellReceipt } = useOptimisticReceipt(sellTxHash);
+  // Push-first confirmation: a swap event for this pool carrying the tx hash
+  // resolves the receipt authoritatively (the chain RPC swallows receipts).
+  const { receipt: buyReceipt } = useOptimisticReceipt(buyTxHash, {
+    poolAddress,
+    channels: [DataChannels.Swap],
+  });
+  const { receipt: sellReceipt } = useOptimisticReceipt(sellTxHash, {
+    poolAddress,
+    channels: [DataChannels.Swap],
+  });
 
   // ── PNL minter ───────────────────────────────────────────────
   const { mint: mintPnlCard, reset: resetPnlMint, state: mintState, card: mintedCard } = useCardMinter();

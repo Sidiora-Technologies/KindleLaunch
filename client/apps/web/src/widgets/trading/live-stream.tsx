@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
-import { dataApiUrl, mediaApiUrl } from '@/core/sdk-config';
+import { dataApiUrl, metadataApiUrl } from '@/core/sdk-config';
 import {
   getPoolStreams,
   createStream,
@@ -42,7 +42,7 @@ export default function LiveStream({ poolAddress }: LiveStreamProps) {
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d?.tokenAddress) return;
-        return fetch(mediaApiUrl(`/metadata/${d.tokenAddress}.json`));
+        return fetch(metadataApiUrl(`/metadata/${d.tokenAddress}`));
       })
       .then(r => r && r.ok ? r.json() : null)
       .then(d => { if (d?.creator) setCreatorWallet(d.creator); })

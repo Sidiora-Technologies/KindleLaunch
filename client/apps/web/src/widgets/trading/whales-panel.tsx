@@ -33,6 +33,7 @@ interface BffHolder {
   address?: string;
   balance?: string;
   pctOfSupply?: string | number;
+  pctOfSupplyPct?: number;
 }
 
 export default function WhalesPanel({ poolAddress }: WhalesPanelProps) {
@@ -49,7 +50,9 @@ export default function WhalesPanel({ poolAddress }: WhalesPanelProps) {
       const holders: BffHolder[] = Array.isArray(bff.holders) ? bff.holders : [];
       const whales: WhaleHolder[] = holders
         .map((h, i) => {
-          const pct = Number(h.pctOfSupply ?? 0);
+          // The BFF converts bps -> human percent once; render and filter on
+          // that percent so the whale cutoff is a true 1% (Bug 5).
+          const pct = Number(h.pctOfSupplyPct ?? 0);
           const addr = h.holderAddress ?? h.address ?? '';
           return {
             rank: i + 1,

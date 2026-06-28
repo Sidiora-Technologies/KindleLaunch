@@ -3,6 +3,7 @@ package broker
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/Sidiora-Technologies/KindleLaunch/shared/constants"
 	"github.com/Sidiora-Technologies/KindleLaunch/shared/util"
@@ -77,11 +78,19 @@ type routing struct {
 
 // pool resolves the routing pool from the top-level field, falling back to the
 // args-nested field used by indexer:* envelopes. Empty means a global event.
+//
+// The resolved pool is lowercased so the routing/filter key is canonical: the
+// indexer emits checksummed/mixed-case poolAddress while clients subscribe with
+// lowercased pools, and broker.Filter.wantsPool is an exact map lookup. Without
+// canonicalising both ends, equal-by-value addresses would never match and every
+// swap/candle_update frame would be dropped before reaching the subscriber
+// (Bug 3 / 6a). The candle data payload keeps its original-cased poolAddress;
+// only the routing pool is normalised.
 func (r routing) pool() string {
 	if r.PoolAddress != "" {
-		return r.PoolAddress
+		return strings.ToLower(r.PoolAddress)
 	}
-	return r.Args.PoolAddress
+	return strings.ToLower(r.Args.PoolAddress)
 }
 
 // DefaultTransform converts a raw Redis channel payload into an OutMessage.

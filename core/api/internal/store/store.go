@@ -16,6 +16,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -304,6 +307,221 @@ func (s *Store) TopHolders(ctx context.Context, pool string, limit int) ([]Holde
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Recent trades (stats.pool_transactions) — one-shot REST bootstrap snapshot
+// for the token-page trades list (Bug 3). JSON tags mirror the frontend
+// PoolTrade shape byte-for-byte.
+// ---------------------------------------------------------------------------
+
+// Trade is one recent swap from stats.pool_transactions (money fields text —
+// invariant i1). JSON tags match the frontend PoolTrade type exactly.
+type Trade struct {
+	ID             string `json:"id"`
+	Sender         string `json:"sender"`
+	IsBuy          bool   `json:"isBuy"`
+	AmountIn       string `json:"amountIn"`
+	AmountOut      string `json:"amountOut"`
+	Price          string `json:"price"`
+	Fee            string `json:"fee"`
+	BlockTimestamp int64  `json:"blockTimestamp"`
+	TxHash         string `json:"txHash"`
+}
+
+// maxRecentTrades caps the bootstrap snapshot size regardless of the requested
+// limit; defaultRecentTrades is used when no positive limit is given.
+const (
+	maxRecentTrades     = 100
+	defaultRecentTrades = 50
+)
+
+// RecentTrades returns the most-recent `limit` swaps for a pool from
+// stats.pool_transactions, newest first (text money fields, invariant i1). This
+// is a one-shot bootstrap snapshot only — live deltas ride the push stream.
+func (s *Store) RecentTrades(ctx context.Context, pool string, limit int) ([]Trade, error) {
+	if limit <= 0 {
+		limit = defaultRecentTrades
+	}
+	if limit > maxRecentTrades {
+		limit = maxRecentTrades
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, sender, is_buy, amount_in, amount_out, price, fee, block_timestamp, tx_hash
+		FROM stats.pool_transactions
+		WHERE pool_address = $1
+		ORDER BY block_timestamp DESC
+		LIMIT $2`, pool, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: recent trades: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Trade, 0, limit)
+	for rows.Next() {
+		var t Trade
+		if err := rows.Scan(
+			&t.ID, &t.Sender, &t.IsBuy, &t.AmountIn, &t.AmountOut,
+			&t.Price, &t.Fee, &t.BlockTimestamp, &t.TxHash,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan trade: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Creator activity (stats.pool_stats + stats.pool_transactions + pool_holders)
+// — the SAME aggregation stats-workers httpapi/pool_analytics.go creatorActivity
+// performs, surfaced through core/api so the token page can seed historical
+// buy/sell counts (Bug 5). Money fields stay text bigint; the holdings percent
+// is converted bps->percent once here (single-point conversion).
+// ---------------------------------------------------------------------------
+
+// CreatorSummary folds the creator's full transaction history into buy/sell
+// counts and token totals (bigint, never float). JSON tags match the frontend.
+type CreatorSummary struct {
+	BuyCount          int    `json:"buyCount"`
+	SellCount         int    `json:"sellCount"`
+	HasSold           bool   `json:"hasSold"`
+	TotalBoughtTokens string `json:"totalBoughtTokens"`
+	TotalSoldTokens   string `json:"totalSoldTokens"`
+	NetTokenBalance   string `json:"netTokenBalance"`
+}
+
+// CreatorActivityResult is the surfaced creator-activity payload. CreatorAddress
+// is nil when the pool never recorded one; CurrentHoldingsPct is a human percent
+// (bps/100). Transactions reuse the Trade shape (newest first).
+type CreatorActivityResult struct {
+	PoolAddress        string          `json:"poolAddress"`
+	CreatorAddress     *string         `json:"creatorAddress"`
+	CreatedAt          int64           `json:"createdAt"`
+	CurrentBalance     string          `json:"currentBalance"`
+	CurrentHoldingsPct float64         `json:"currentHoldingsPct"`
+	Summary            *CreatorSummary `json:"summary"`
+	Transactions       []Trade         `json:"transactions"`
+}
+
+// CreatorActivity reads the pool's creator address + holdings (stats.pool_stats),
+// the creator's full swap history (stats.pool_transactions filtered by sender),
+// and the creator's current balance (stats.pool_holders), folding buy/sell
+// counts and token totals in bigint — the same aggregation stats-workers
+// already computes (5.3.5). found is false when the pool has no stats row.
+func (s *Store) CreatorActivity(ctx context.Context, pool string) (*CreatorActivityResult, bool, error) {
+	var (
+		creatorAddr     *string
+		creatorHoldings string
+		createdAt       int64
+	)
+	err := s.pool.QueryRow(ctx, `
+		SELECT creator_address, creator_holdings_pct, created_at
+		FROM stats.pool_stats WHERE pool_address = $1 LIMIT 1`, pool).
+		Scan(&creatorAddr, &creatorHoldings, &createdAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("store: creator activity stats: %w", err)
+	}
+
+	res := &CreatorActivityResult{
+		PoolAddress:        pool,
+		CreatorAddress:     creatorAddr,
+		CreatedAt:          createdAt,
+		CurrentBalance:     "0",
+		CurrentHoldingsPct: BpsToPct(creatorHoldings),
+		Transactions:       []Trade{},
+	}
+	if creatorAddr == nil {
+		return res, true, nil
+	}
+	creatorLower := strings.ToLower(*creatorAddr)
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, sender, is_buy, amount_in, amount_out, price, fee, block_timestamp, tx_hash
+		FROM stats.pool_transactions
+		WHERE pool_address = $1 AND sender = $2
+		ORDER BY block_timestamp DESC`, pool, creatorLower)
+	if err != nil {
+		return nil, false, fmt.Errorf("store: creator activity txs: %w", err)
+	}
+	defer rows.Close()
+
+	totalBought := new(big.Int)
+	totalSold := new(big.Int)
+	buyCount, sellCount := 0, 0
+	txs := []Trade{}
+	for rows.Next() {
+		var t Trade
+		if err := rows.Scan(
+			&t.ID, &t.Sender, &t.IsBuy, &t.AmountIn, &t.AmountOut,
+			&t.Price, &t.Fee, &t.BlockTimestamp, &t.TxHash,
+		); err != nil {
+			return nil, false, fmt.Errorf("store: scan creator tx: %w", err)
+		}
+		if t.IsBuy {
+			if v, ok := new(big.Int).SetString(t.AmountOut, 10); ok {
+				totalBought.Add(totalBought, v)
+			}
+			buyCount++
+		} else {
+			if v, ok := new(big.Int).SetString(t.AmountIn, 10); ok {
+				totalSold.Add(totalSold, v)
+			}
+			sellCount++
+		}
+		txs = append(txs, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("store: creator tx rows: %w", err)
+	}
+	res.Transactions = txs
+
+	var balance string
+	err = s.pool.QueryRow(ctx, `
+		SELECT balance FROM stats.pool_holders
+		WHERE pool_address = $1 AND holder_address = $2`, pool, creatorLower).Scan(&balance)
+	if err == nil {
+		res.CurrentBalance = balance
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, fmt.Errorf("store: creator balance: %w", err)
+	}
+
+	net := new(big.Int).Sub(totalBought, totalSold)
+	res.Summary = &CreatorSummary{
+		BuyCount:          buyCount,
+		SellCount:         sellCount,
+		HasSold:           sellCount > 0,
+		TotalBoughtTokens: totalBought.String(),
+		TotalSoldTokens:   totalSold.String(),
+		NetTokenBalance:   net.String(),
+	}
+	return res, true, nil
+}
+
+// BpsToPct converts a basis-points string (1 bps = 0.01%) to a human percent
+// number, rounded to 2dp. Invalid input yields 0. This is the single-point
+// bps->percent conversion for the unit contract (Bug 5): bps at source/transport,
+// percent at render — converted in exactly one layer (core/api).
+func BpsToPct(bps string) float64 {
+	v, err := strconv.ParseFloat(bps, 64)
+	if err != nil {
+		return 0
+	}
+	return round2(v / 100)
+}
+
+// round2 rounds to two decimal places.
+func round2(f float64) float64 {
+	return float64(int64(f*100+sign(f)*0.5)) / 100
+}
+
+func sign(f float64) float64 {
+	if f < 0 {
+		return -1
+	}
+	return 1
 }
 
 // ---------------------------------------------------------------------------

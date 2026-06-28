@@ -1,7 +1,7 @@
-import { sdkBaseUrls, getServiceWsUrl } from '@/core/sdk-config';
+import { dataApiUrl, dataCandlesWsUrl } from '@/core/sdk-config';
 import { WsManager } from '@/core/realtime/ws-manager';
 
-const API = sdkBaseUrls.candles;
+const API = dataApiUrl('/udf');
 const POLL_INTERVAL = 10_000;
 
 // price_human × 1e9 = mcap_human
@@ -71,7 +71,7 @@ type Subscription = {
 };
 
 function getWsUrl(): string {
-  return getServiceWsUrl('candles');
+  return dataCandlesWsUrl();
 }
 
 export function createUdfDatafeed(poolAddress: string, mode: ChartMode = 'price') {

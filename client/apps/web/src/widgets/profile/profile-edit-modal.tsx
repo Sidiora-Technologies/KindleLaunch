@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount, useSignMessage } from 'wagmi';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { userApiUrl } from '@/core/sdk-config';
 import { CountrySelectDialog } from '@/new-components/CountrySelectDialog';
 
 type Country = { name: string; code: string; flag: string };
@@ -93,7 +93,7 @@ export default function ProfileEditModal({ open, onClose, onSaved, initial }: Pr
         formData.append('file', avatarFile);
 
         const avatarRes = await fetch(
-          `${sdkBaseUrls.users}/users/${address}/avatar`,
+          userApiUrl(`/users/${address}/avatar`),
           {
             method: 'POST',
             headers: {
@@ -112,7 +112,7 @@ export default function ProfileEditModal({ open, onClose, onSaved, initial }: Pr
 
       // Update profile text fields
       const profileRes = await fetch(
-        `${sdkBaseUrls.users}/users/${address}`,
+        userApiUrl(`/users/${address}`),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

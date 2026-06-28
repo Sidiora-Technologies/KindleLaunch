@@ -138,35 +138,9 @@ func Run(parent context.Context) error {
 		return fmt.Errorf("app: start consumer: %w", err)
 	}
 
-	// C-3: Periodic candle gap detection (every 60s).
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				filled, err := engine.DetectAndFillGaps(ctx, app.pool, logger, nil)
-				if err != nil {
-					logger.Error("gap fill cycle failed", slog.Any("err", err))
-				} else if filled > 0 {
-					logger.Info("gap fill cycle complete", slog.Int("filled", filled))
-				}
-			}
-		}
-	}()
-
-	// Run once on startup after a brief delay.
-	go func() {
-		time.Sleep(5 * time.Second)
-		filled, err := engine.DetectAndFillGaps(ctx, app.pool, logger, nil)
-		if err != nil {
-			logger.Error("initial gap fill failed", slog.Any("err", err))
-		} else if filled > 0 {
-			logger.Info("initial gap fill complete", slog.Int("filled", filled))
-		}
-	}()
+	// Candles are trade-only: the builder opens each new candle at the prior
+	// close via the candle cursor, so empty (zero-trade) buckets produce no
+	// candle at all. No gap-fill scheduling (Bug 6b).
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

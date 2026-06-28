@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl } from '@/core/sdk-config';
+import { usePoolEvents } from '@/core/realtime/use-data-stream';
+import { DataChannels, type DataEvent } from '@/core/realtime/data-stream';
 
 /**
  * 3.6: Community reactions wired to backend /stats/:pool/reactions.
@@ -54,11 +56,13 @@ export default function CommunityReactions({ poolAddress, walletAddress, signMes
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/reactions`);
+        // Bootstrap from the one-shot BFF snapshot (reactions live under `reactions`).
+        const res = await fetch(dataApiUrl(`/bff/token/${poolAddress}`));
         if (res.ok && !cancelled) {
-          const data = await res.json();
+          const bff = await res.json();
+          const map = bff?.reactions?.reactions ?? bff?.reactions ?? {};
           const next = defaultCounts();
-          for (const [apiKey, count] of Object.entries(data.reactions ?? {})) {
+          for (const [apiKey, count] of Object.entries(map)) {
             const emoji = apiKeyToEmoji[apiKey as ReactionApiKey];
             if (emoji) next[emoji] = count as number;
           }
@@ -73,6 +77,22 @@ export default function CommunityReactions({ poolAddress, walletAddress, signMes
     })();
     return () => { cancelled = true; };
   }, [poolAddress]);
+
+  // Live tallies off the stream (must-deliver reactions_update).
+  usePoolEvents(
+    poolAddress,
+    [DataChannels.ReactionsUpdate],
+    (event: DataEvent) => {
+      const raw = event.data as { reactions?: Record<string, number> } | undefined;
+      const map = raw?.reactions ?? {};
+      const next = defaultCounts();
+      for (const [apiKey, count] of Object.entries(map)) {
+        const emoji = apiKeyToEmoji[apiKey as ReactionApiKey];
+        if (emoji) next[emoji] = count as number;
+      }
+      setCounts(next);
+    },
+  );
 
   const handleVote = useCallback(async (emoji: ReactionKey) => {
     const apiKey = emojiToApiKey[emoji];
@@ -102,12 +122,16 @@ export default function CommunityReactions({ poolAddress, walletAddress, signMes
     setBurst(emoji);
     setTimeout(() => setBurst(null), 600);
 
-    // Send to backend if wallet is connected
-    if (walletAddress && signMessage) {
+    // Persist the vote when a public reactions-write edge is configured. There
+    // is no public reactions-write route today (the worker route is internal),
+    // so this is opt-in via NEXT_PUBLIC_REACTIONS_WRITE_URL and a no-op
+    // otherwise; the tally still updates live via the reactions_update stream.
+    const writeBase = (process.env.NEXT_PUBLIC_REACTIONS_WRITE_URL || '').replace(/\/$/, '');
+    if (writeBase && walletAddress && signMessage) {
       try {
         const message = `react:${poolAddress}:${apiKey}:${Date.now()}`;
         const signature = await signMessage(message);
-        await fetch(`${sdkBaseUrls.stats}/stats/${poolAddress}/reactions`, {
+        await fetch(`${writeBase}/stats/${poolAddress}/reactions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reaction: apiKey, walletAddress, signature, message }),

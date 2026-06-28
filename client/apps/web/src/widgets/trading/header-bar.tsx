@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { formatAddress } from '@/utils/format';
-import { sdkBaseUrls, getUserAvatarUrl } from '@/core/sdk-config';
+import { userApiUrl, getUserAvatarUrl } from '@/core/sdk-config';
 import { useWatchlist } from '@/hooks/ui/use-watchlist';
 import { useTokenStats } from '@/hooks/market/use-token-stats';
 import { useTokenMetadata } from '@/hooks/market/use-token-metadata';
@@ -42,7 +42,7 @@ export default function HeaderBar({ poolAddress }: HeaderBarProps) {
     queryKey: queryKeys.userProfile(meta?.creator ?? ''),
     queryFn: async () => {
       if (!meta?.creator) return null;
-      const res = await fetch(`${sdkBaseUrls.users}/users/${meta.creator}`);
+      const res = await fetch(userApiUrl(`/users/${meta.creator}`));
       return res.ok ? res.json() : null;
     },
     enabled: !!meta?.creator,

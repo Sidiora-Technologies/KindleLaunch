@@ -18,7 +18,7 @@ interface Bracket {
 
 interface WalletEntry {
   address: string;
-  pctBps: number;
+  pct: number; // human percent (bps converted once in the core/api BFF)
   rank: number;
 }
 
@@ -40,6 +40,7 @@ interface BffHolder {
   holderAddress?: string;
   address?: string;
   pctOfSupply?: string | number;
+  pctOfSupplyPct?: number;
 }
 
 export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListProps) {
@@ -56,18 +57,20 @@ export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListPr
       const bff = await fetch(dataApiUrl(`/bff/token/${poolAddress}`)).then(r => (r.ok ? r.json() : null));
       if (!bff) return;
       const stats = bff.stats ?? {};
+      const pct = bff.pct ?? {};
       const holders: BffHolder[] = Array.isArray(bff.holders) ? bff.holders : [];
       const top10: WalletEntry[] = holders.map((h, i) => ({
         address: h.holderAddress ?? h.address ?? '',
-        // store pct as bps so the existing bpsToPct(/100) render stays correct
-        pctBps: Number(h.pctOfSupply ?? 0) * 100,
+        // The BFF already converted bps -> human percent (single-point); render
+        // it directly with no extra ×100 (Bug 5).
+        pct: Number(h.pctOfSupplyPct ?? 0),
         rank: i + 1,
       }));
       setDist({
         totalHolders: Number(stats.holderCount ?? top10.length),
         brackets: [],
         top10,
-        top10Pct: String(Number(stats.top10Concentration ?? 0) * 100),
+        top10Pct: String(Number(pct.top10Concentration ?? 0)),
         top20Pct: '',
         top50Pct: '',
         walletMap: top10,
@@ -85,9 +88,9 @@ export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListPr
   const holders = showAll ? dist.walletMap : dist.top10;
   const maxBracketBps = Math.max(...dist.brackets.map(b => b.totalBalancePctBps), 1);
   const metrics = [
-    { label: 'Top 10', val: bpsToPct(Number(dist.top10Pct)) },
-    ...(dist.top20Pct ? [{ label: 'Top 20', val: bpsToPct(Number(dist.top20Pct)) }] : []),
-    ...(dist.top50Pct ? [{ label: 'Top 50', val: bpsToPct(Number(dist.top50Pct)) }] : []),
+    { label: 'Top 10', val: Number(dist.top10Pct) },
+    ...(dist.top20Pct ? [{ label: 'Top 20', val: Number(dist.top20Pct) }] : []),
+    ...(dist.top50Pct ? [{ label: 'Top 50', val: Number(dist.top50Pct) }] : []),
   ];
 
   return (
@@ -150,7 +153,7 @@ export default function TopHoldersFullList({ poolAddress }: TopHoldersFullListPr
               </a>
             </div>
             <span className="text-white font-manrope-bold flex-shrink-0 ml-2">
-              {safeFixed(bpsToPct(h.pctBps), 2)}%
+              {safeFixed(h.pct, 2)}%
             </span>
           </div>
         )}

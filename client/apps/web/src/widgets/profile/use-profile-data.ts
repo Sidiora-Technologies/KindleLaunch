@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAccount, usePublicClient, useReadContracts } from 'wagmi';
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { dataApiUrl, userApiUrl } from '@/core/sdk-config';
 import { fetchTokenMetadataBatch } from '@/core/clients/metadata';
 import { formatAddress } from '@/utils/format';
 import { queryKeys } from '@/core/query-keys';
@@ -131,7 +131,7 @@ export function useUserProfile(walletAddress: string) {
   return useQuery<UserProfile | null>({
     queryKey: queryKeys.userProfile(walletAddress),
     queryFn: async () => {
-      const res = await fetch(`${sdkBaseUrls.users}/users/${walletAddress}.json`);
+      const res = await fetch(userApiUrl(`/users/${walletAddress}`));
       return res.ok ? res.json() : null;
     },
     enabled: !!walletAddress,
@@ -151,7 +151,7 @@ export function useCreatedCoins(profile: UserProfile | null | undefined) {
 
       let statsMap: Record<string, any> = {};
       try {
-        const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`);
+        const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`));
         if (statsRes.ok) statsMap = await statsRes.json();
       } catch {}
 
@@ -302,7 +302,7 @@ export function usePublicRewards({ walletAddress, isValidWallet }: UsePublicRewa
       const metaMap = new Map<number, RewardPoolMeta>();
       if (poolAddrs.length > 0) {
         try {
-          const statsRes = await fetch(`${sdkBaseUrls.stats}/stats/batch?pools=${poolAddrs.join(',')}`);
+          const statsRes = await fetch(dataApiUrl(`/stats/batch?pools=${poolAddrs.join(',')}`));
           if (statsRes.ok) {
             const statsMap = await statsRes.json();
 

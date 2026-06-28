@@ -1,6 +1,12 @@
-import { sdkBaseUrls } from '@/core/sdk-config';
+import { gatewayUrl } from '@/core/sdk-config';
 
-const API = sdkBaseUrls.livestream;
+// NOTE: media/livestream has no dedicated public host in the 2026-06-27 mapping
+// and the gateway does not yet proxy `/livestream`. Pointed at the gateway as a
+// placeholder + env override (NEXT_PUBLIC_LIVESTREAM_API_URL) pending a backend
+// host/proxy decision; live-stream features stay degraded until then.
+const API =
+  (process.env.NEXT_PUBLIC_LIVESTREAM_API_URL || '').replace(/\/$/, '') ||
+  gatewayUrl('/livestream');
 
 export interface StreamPublic {
   id: string;
